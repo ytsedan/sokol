@@ -971,6 +971,9 @@ inline int sapp_run(const sapp_desc& desc) { return sapp_run(&desc); }
 /* check if the config defines are alright */
 #if defined(__APPLE__)
     // see https://clang.llvm.org/docs/LanguageExtensions.html#automatic-reference-counting
+    #if __has_feature(objc_arc)
+        #error "ARC IS ON! (FIXME: remove this message)"
+    #endif
     #if !defined(__cplusplus)
         #if __has_feature(objc_arc) && !__has_feature(objc_arc_fields)
             #error "sokol_app.h requires __has_feature(objc_arc_field) if ARC is enabled (use a more recent compiler version)"
@@ -1205,8 +1208,34 @@ typedef struct {
 
 typedef struct {
     Class cls;
-    SEL alloc;
-    SEL init;
+    SEL stringWithUTF8String;
+} _sapp_objc_nsstring_t;
+
+typedef struct {
+    Class cls;
+    SEL mainScreen;
+    SEL frame;
+} _sapp_objc_nsscreen_t;
+
+typedef struct {
+    Class cls;
+    SEL initWithContentRect;
+    SEL setReleasedWhenClosed;
+    SEL setTitle;
+    SEL setAcceptsMouseMovedEvents;
+    SEL setRestorable;
+    SEL setDelegate;
+    SEL setContentView;
+    SEL makeFirstResponder;
+    SEL toggleFullScreen;
+    SEL center;
+    SEL makeKeyAndOrderFront;
+    SEL performClose;
+    SEL mouseLocationOutsideOfEventStream;
+} _sapp_objc_nswindow_t;
+
+typedef struct {
+    Class cls;
     SEL applicationDidFinishLaunching;
     SEL applicationShouldTerminateAfterLastWindowClosed;
     SEL applicationWillTerminate;
@@ -1229,7 +1258,13 @@ typedef struct {
 } _sapp_objc_mtkviewdlg_t;
 
 typedef struct {
-    _sapp_objc_nsapp_t app;
+    SEL alloc;
+    SEL init;
+    SEL release;
+    _sapp_objc_nsapp_t nsapp;
+    _sapp_objc_nsstring_t nsstring;
+    _sapp_objc_nsscreen_t nsscreen;
+    _sapp_objc_nswindow_t nswindow;
     _sapp_objc_appdlg_t appdlg;
     _sapp_objc_windlg_t windlg;
     _sapp_objc_mtkviewdlg_t mtkviewdlg;
@@ -2196,11 +2231,13 @@ _SOKOL_PRIVATE void _sapp_frame(void) {
 /*== MacOS/iOS ===============================================================*/
 #if defined(_SAPP_APPLE)
 
-#if __has_feature(objc_arc)
-#define _SAPP_OBJC_RELEASE(obj) { obj = nil; }
-#else
-#define _SAPP_OBJC_RELEASE(obj) { [obj release]; obj = nil; }
-#endif
+#define _SAPP_OBJC_STRING(str) objc_msgSend((id)_sapp.macos.oc.nsstring.cls, _sapp.macos.oc.nsstring.stringWithUTF8String, str)
+#define _SAPP_OBJC_ALLOC_INIT(CLS) objc_msgSend(objc_msgSend((id)CLS, _sapp.macos.oc.alloc), _sapp.macos.oc.init)
+#define _SAPP_OBJC_ALLOC(CLS) objc_msgSend((id)CLS, _sapp.macos.oc.alloc)
+#define _SAPP_OBJC_MSGSEND objc_msgSend
+#define _SAPP_OBJC_MSGSEND_STRET_SMALL(TYPE) ((TYPE(*)(id, SEL))objc_msgSend)
+#define _SAPP_OBJC_MSGSEND_STRET(TYPE) ((TYPE(*)(id, SEL))objc_msgSend_stret)
+#define _SAPP_OBJC_RELEASE(obj) { if (nil != obj) { objc_msgSend(obj, _sapp.macos.oc.release); obj=nil; } }
 
 /*== MacOS ===================================================================*/
 #if defined(_SAPP_MACOS)
@@ -2209,28 +2246,62 @@ _SOKOL_PRIVATE void _sapp_macos_applicationDidFinishLaunching(id self, SEL cmd, 
 _SOKOL_PRIVATE BOOL _sapp_macos_applicationShouldTerminateAfterLastWindowClosed(id self, SEL cmd, id sender);
 _SOKOL_PRIVATE void _sapp_macos_applicationWillTerminate(id self, SEL cmd, id aNotification);
 
-_SOKOL_PRIVATE void _sapp_macos_objc_init(void) {
+_SOKOL_PRIVATE void _sapp_macos_init_objc(void) {
+    _sapp.macos.oc.alloc = sel_getUid("alloc");
+    _sapp.macos.oc.init = sel_getUid("init");
+    _sapp.macos.oc.release = sel_getUid("release");
+
     // NSApplication
     {
-        _sapp_objc_nsapp_t* app = &_sapp.macos.oc.app;
-        app->cls = objc_getClass("NSApplication");
-        app->sharedApplication = sel_registerName("sharedApplication");
-        app->setActivationPolicy = sel_registerName("setActivationPolicy:");
-        app->activateIgnoringOtherApps = sel_registerName("activateIgnoringOtherApps:");
-        app->setDelegate = sel_registerName("setDelegate:");
-        app->run = sel_registerName("run");
+        _sapp_objc_nsapp_t* _app = &_sapp.macos.oc.nsapp;
+        _app->cls = objc_getClass("NSApplication");
+        _app->sharedApplication = sel_getUid("sharedApplication");
+        _app->setActivationPolicy = sel_getUid("setActivationPolicy:");
+        _app->activateIgnoringOtherApps = sel_getUid("activateIgnoringOtherApps:");
+        _app->setDelegate = sel_getUid("setDelegate:");
+        _app->run = sel_getUid("run");
+    }
+
+    // NSString
+    {
+        _sapp_objc_nsstring_t* _str = &_sapp.macos.oc.nsstring;
+        _str->cls = objc_getClass("NSString");
+        _str->stringWithUTF8String = sel_getUid("stringWithUTF8String:");
+    }
+
+    // NSScreen
+    {
+        _sapp_objc_nsscreen_t* screen = &_sapp.macos.oc.nsscreen;
+        screen->cls = objc_getClass("NSScreen");
+        screen->mainScreen = sel_getUid("mainScreen");
+        screen->frame = sel_getUid("frame");
+    }
+
+    // NSWindow
+    {
+        _sapp_objc_nswindow_t* win = &_sapp.macos.oc.nswindow;
+        win->cls = objc_getClass("NSWindow");
+        win->initWithContentRect = sel_getUid("initWithContentRect:styleMask:backing:defer:");
+        win->setReleasedWhenClosed = sel_getUid("setReleasedWhenClosed:");
+        win->setTitle = sel_getUid("setTitle:");
+        win->setAcceptsMouseMovedEvents = sel_getUid("setAcceptsMouseMovedEvents:");
+        win->setRestorable = sel_getUid("setRestorable:");
+        win->setDelegate = sel_getUid("setDelegate:");
+        win->setContentView = sel_getUid("setContentView:");
+        win->makeFirstResponder = sel_getUid("makeFirstResponder:");
+        win->toggleFullScreen = sel_getUid("toggleFullScreen:");
+        win->center = sel_getUid("center");
+        win->makeKeyAndOrderFront = sel_getUid("makeKeyAndOrderFront:");
+        win->performClose = sel_getUid("performClose:");
+        win->mouseLocationOutsideOfEventStream = sel_getUid("mouseLocationOutsideOfEventStream");
     }
 
     // setup the application delegate class
     {
         _sapp_objc_appdlg_t* appdlg = &_sapp.macos.oc.appdlg;
-
-        appdlg->alloc = sel_registerName("alloc");
-        appdlg->init = sel_registerName("init");
-        appdlg->applicationDidFinishLaunching = sel_registerName("applicationDidFinishLaunching:");
-        appdlg->applicationShouldTerminateAfterLastWindowClosed = sel_registerName("applicationShouldTerminateAfterLastWindowClosed:");
-        appdlg->applicationWillTerminate = sel_registerName("applicationWillTerminate:");
-
+        appdlg->applicationDidFinishLaunching = sel_getUid("applicationDidFinishLaunching:");
+        appdlg->applicationShouldTerminateAfterLastWindowClosed = sel_getUid("applicationShouldTerminateAfterLastWindowClosed:");
+        appdlg->applicationWillTerminate = sel_getUid("applicationWillTerminate:");
         appdlg->cls = objc_allocateClassPair(objc_getClass("NSObject"), "_sapp_macos_app_delegate", 0);
         class_addMethod(appdlg->cls,
                         appdlg->applicationDidFinishLaunching,
@@ -2246,6 +2317,10 @@ _SOKOL_PRIVATE void _sapp_macos_objc_init(void) {
                         "v@:@");
         objc_registerClassPair(appdlg->cls);
     }
+}
+
+_SOKOL_PRIVATE void _sapp_macos_discard_objc(void) {
+    objc_disposeClassPair(_sapp.macos.oc.appdlg.cls);
 }
 
 _SOKOL_PRIVATE void _sapp_macos_init_keytable(void) {
@@ -2373,22 +2448,24 @@ _SOKOL_PRIVATE void _sapp_macos_discard_state(void) {
         _SAPP_OBJC_RELEASE(_sapp.macos.mtl_device);
     #endif
     _SAPP_OBJC_RELEASE(_sapp.macos.window);
+
+    _sapp_macos_discard_objc();
 }
 
 _SOKOL_PRIVATE void _sapp_macos_run(const sapp_desc* desc) {
     _sapp_init_state(desc);
-    _sapp_macos_objc_init();
+    _sapp_macos_init_objc();
     _sapp_macos_init_keytable();
 
-    const _sapp_objc_nsapp_t* app = &_sapp.macos.oc.app;
-    const _sapp_objc_appdlg_t* dlg = &_sapp.macos.oc.appdlg;
+    const _sapp_objc_nsapp_t* _app = &_sapp.macos.oc.nsapp;
+    const _sapp_objc_appdlg_t* _dlg = &_sapp.macos.oc.appdlg;
 
-    objc_msgSend((id)app->cls, app->sharedApplication);
-    objc_msgSend(NSApp, app->setActivationPolicy, NSApplicationActivationPolicyRegular);
-    objc_msgSend(NSApp, app->activateIgnoringOtherApps, YES);
-    _sapp.macos.app_dlg = objc_msgSend(objc_msgSend((id)dlg->cls, dlg->alloc), dlg->init);
-    objc_msgSend(NSApp, app->setDelegate, _sapp.macos.app_dlg);
-    objc_msgSend(NSApp, app->run);
+    _SAPP_OBJC_MSGSEND((id)_app->cls, _app->sharedApplication);
+    _SAPP_OBJC_MSGSEND(NSApp, _app->setActivationPolicy, NSApplicationActivationPolicyRegular);
+    _SAPP_OBJC_MSGSEND(NSApp, _app->activateIgnoringOtherApps, YES);
+    _sapp.macos.app_dlg = _SAPP_OBJC_ALLOC_INIT(_dlg->cls);
+    _SAPP_OBJC_MSGSEND(NSApp, _app->setDelegate, _sapp.macos.app_dlg);
+    _SAPP_OBJC_MSGSEND(NSApp, _app->run);
 
     // NOTE: [NSApp run] never returns, instead cleanup code
     // must be put into applicationWillTerminate
@@ -2431,13 +2508,14 @@ _SOKOL_PRIVATE void _sapp_macos_update_dimensions(void) {
     _sapp.dpi_scale = (float)_sapp.framebuffer_width / (float)_sapp.window_width;
 }
 
-_SOKOL_PRIVATE void _sapp_macos_frame(void) {
-    const NSPoint mouse_pos = [_sapp.macos.window mouseLocationOutsideOfEventStream];
+void _sapp_macos_frame(void) {
+    _sapp_objc_nswindow_t* _win = &_sapp.macos.oc.nswindow;
+    const NSPoint mouse_pos = _SAPP_OBJC_MSGSEND_STRET_SMALL(const NSPoint)(_sapp.macos.window, _win->mouseLocationOutsideOfEventStream);
     _sapp.mouse_x = mouse_pos.x * _sapp.dpi_scale;
     _sapp.mouse_y = _sapp.framebuffer_height - (mouse_pos.y * _sapp.dpi_scale) - 1;
     _sapp_frame();
     if (_sapp.quit_requested || _sapp.quit_ordered) {
-        [_sapp.macos.window performClose:nil];
+        _SAPP_OBJC_MSGSEND(_sapp.macos.window, _win->performClose, nil);
     }
 }
 
@@ -2447,7 +2525,7 @@ _SOKOL_PRIVATE void _sapp_macos_toggle_fullscreen(void) {
        event handlers
     */
     _sapp.fullscreen = !_sapp.fullscreen;
-    [_sapp.macos.window toggleFullScreen:nil];
+    _SAPP_OBJC_MSGSEND(_sapp.macos.window, _sapp.macos.oc.nswindow.toggleFullScreen, nil);
 }
 
 _SOKOL_PRIVATE void _sapp_macos_applicationDidFinishLaunching(id self, SEL cmd, id notification) {
@@ -2455,7 +2533,9 @@ _SOKOL_PRIVATE void _sapp_macos_applicationDidFinishLaunching(id self, SEL cmd, 
     _SOKOL_UNUSED(cmd);
     _SOKOL_UNUSED(notification);
     if (_sapp.fullscreen) {
-        NSRect screen_rect = NSScreen.mainScreen.frame;
+        const _sapp_objc_nsscreen_t* _scr = &_sapp.macos.oc.nsscreen;
+        id main_screen = _SAPP_OBJC_MSGSEND((id)_scr->cls, _scr->mainScreen);
+        NSRect screen_rect = _SAPP_OBJC_MSGSEND_STRET(NSRect)(main_screen, _scr->frame);
         _sapp.window_width = screen_rect.size.width;
         _sapp.window_height = screen_rect.size.height;
         if (_sapp.desc.high_dpi) {
@@ -2474,18 +2554,20 @@ _SOKOL_PRIVATE void _sapp_macos_applicationDidFinishLaunching(id self, SEL cmd, 
         NSWindowStyleMaskMiniaturizable |
         NSWindowStyleMaskResizable;
     NSRect window_rect = NSMakeRect(0, 0, _sapp.window_width, _sapp.window_height);
-    _sapp.macos.window = [[NSWindow alloc]
-        initWithContentRect:window_rect
-        styleMask:style
-        backing:NSBackingStoreBuffered
-        defer:NO];
-    _sapp.macos.window.releasedWhenClosed = NO; // this is necessary for proper cleanup in applicationWillTerminate
-    _sapp.macos.window.title = [NSString stringWithUTF8String:_sapp.window_title];
-    _sapp.macos.window.acceptsMouseMovedEvents = YES;
-    _sapp.macos.window.restorable = YES;
+    _sapp_objc_nswindow_t* _win = &_sapp.macos.oc.nswindow;
+    _sapp.macos.window = _SAPP_OBJC_ALLOC(_win->cls);
+    _SAPP_OBJC_MSGSEND(_sapp.macos.window, _win->initWithContentRect,
+        window_rect,
+        style,
+        NSBackingStoreBuffered,
+        NO);
+    _SAPP_OBJC_MSGSEND(_sapp.macos.window, _win->setReleasedWhenClosed, NO); // this is necessary for proper cleanup in applicationWillTerminate
+    _SAPP_OBJC_MSGSEND(_sapp.macos.window, _win->setTitle, _SAPP_OBJC_STRING(_sapp.window_title));
+    _SAPP_OBJC_MSGSEND(_sapp.macos.window, _win->setAcceptsMouseMovedEvents, YES);
+    _SAPP_OBJC_MSGSEND(_sapp.macos.window, _win->setRestorable, YES);
 
     _sapp.macos.win_dlg = [[_sapp_macos_window_delegate alloc] init];
-    _sapp.macos.window.delegate = _sapp.macos.win_dlg;
+    _SAPP_OBJC_MSGSEND(_sapp.macos.window, _win->setDelegate, _sapp.macos.win_dlg);
     #if defined(SOKOL_METAL)
         _sapp.macos.mtl_device = MTLCreateSystemDefaultDevice();
         _sapp.macos.mtk_view_dlg = [[_sapp_macos_mtk_view_dlg alloc] init];
@@ -2497,8 +2579,8 @@ _SOKOL_PRIVATE void _sapp_macos_applicationDidFinishLaunching(id self, SEL cmd, 
         _sapp.macos.view.colorPixelFormat = MTLPixelFormatBGRA8Unorm;
         _sapp.macos.view.depthStencilPixelFormat = MTLPixelFormatDepth32Float_Stencil8;
         _sapp.macos.view.sampleCount = _sapp.sample_count;
-        _sapp.macos.window.contentView = _sapp.macos.view;
-        [_sapp.macos.window makeFirstResponder:_sapp.macos.view];
+        _SAPP_OBJC_MSGSEND(_sapp.macos.window, _win->setContentView, _sapp.macos.view);
+        _SAPP_OBJC_MSGSEND(_sapp.macos.window, _win->makeFirstResponder, _sapp.macos.view);
         if (!_sapp.desc.high_dpi) {
             CGSize drawable_size = { (CGFloat) _sapp.framebuffer_width, (CGFloat) _sapp.framebuffer_height };
             _sapp.macos.view.drawableSize = drawable_size;
@@ -2552,13 +2634,13 @@ _SOKOL_PRIVATE void _sapp_macos_applicationDidFinishLaunching(id self, SEL cmd, 
     _sapp.valid = true;
     if (_sapp.fullscreen) {
         /* on GL, this already toggles a rendered frame, so set the valid flag before */
-        [_sapp.macos.window toggleFullScreen:self];
+        _SAPP_OBJC_MSGSEND(_sapp.macos.window, _win->toggleFullScreen, self);
     }
     else {
-        [_sapp.macos.window center];
+        _SAPP_OBJC_MSGSEND(_sapp.macos.window, _win->center);
     }
-    [_sapp.macos.window makeKeyAndOrderFront:nil];
-    _sapp_macos_update_dimensions();    
+    _SAPP_OBJC_MSGSEND(_sapp.macos.window, _win->makeKeyAndOrderFront, nil);
+    _sapp_macos_update_dimensions();
 }
 
 _SOKOL_PRIVATE BOOL _sapp_macos_applicationShouldTerminateAfterLastWindowClosed(id self, SEL cmd, id sender) {
@@ -2566,7 +2648,6 @@ _SOKOL_PRIVATE BOOL _sapp_macos_applicationShouldTerminateAfterLastWindowClosed(
     _SOKOL_UNUSED(cmd);
     _SOKOL_UNUSED(sender);
     return YES;
-
 }
 
 _SOKOL_PRIVATE void _sapp_macos_applicationWillTerminate(id self, SEL cmd, id notification) {
