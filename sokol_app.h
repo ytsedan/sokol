@@ -1278,8 +1278,6 @@ typedef struct {
     _sapp_oc_mtkviewdlg_t mtkviewdlg;
 } _sapp_oc_t;
 
-@interface _sapp_macos_window_delegate : NSObject<NSWindowDelegate>
-@end
 #if defined(SOKOL_METAL)
     @interface _sapp_macos_mtk_view_dlg : NSObject<MTKViewDelegate>
     @end
@@ -1295,10 +1293,10 @@ typedef struct {
 
 typedef struct {
     uint32_t flags_changed_store;
-    NSWindow* window;
-    NSTrackingArea* tracking_area;
     id app_dlg;
-    _sapp_macos_window_delegate* win_dlg;
+    id window;
+    id win_dlg;
+    NSTrackingArea* tracking_area;
     _sapp_macos_view* view;
     #if defined(SOKOL_METAL)
         _sapp_macos_mtk_view_dlg* mtk_view_dlg;
@@ -2244,9 +2242,15 @@ _SOKOL_PRIVATE void _sapp_frame(void) {
 
 #define _SAPP_OC_RELEASE(obj) { _sapp_oc_release(obj); obj=nil; }
 
-_SOKOL_PRIVATE void _sapp_macos_applicationDidFinishLaunching(id self, SEL cmd, id aNotification);
-_SOKOL_PRIVATE BOOL _sapp_macos_applicationShouldTerminateAfterLastWindowClosed(id self, SEL cmd, id sender);
-_SOKOL_PRIVATE void _sapp_macos_applicationWillTerminate(id self, SEL cmd, id aNotification);
+_SOKOL_PRIVATE void _sapp_oc_appdlg_applicationDidFinishLaunching(id self, SEL cmd, id aNotification);
+_SOKOL_PRIVATE BOOL _sapp_oc_appdlg_applicationShouldTerminateAfterLastWindowClosed(id self, SEL cmd, id sender);
+_SOKOL_PRIVATE void _sapp_oc_appdlg_applicationWillTerminate(id self, SEL cmd, id aNotification);
+_SOKOL_PRIVATE BOOL _sapp_oc_windlg_windowShouldClose(id self, SEL cmd, id sender);
+_SOKOL_PRIVATE void _sapp_oc_windlg_windowDidResize(id self, SEL cmd, id notification);
+_SOKOL_PRIVATE void _sapp_oc_windlg_windowDidMiniaturize(id self, SEL cmd, id notification);
+_SOKOL_PRIVATE void _sapp_oc_windlg_windowDidDeminiaturize(id self, SEL cmd, id notification);
+_SOKOL_PRIVATE void _sapp_oc_windlg_windowDidEnterFullScreen(id self, SEL cmd, id notification);
+_SOKOL_PRIVATE void _sapp_oc_windlg_windowDidExitFullScreen(id self, SEL cmd, id notification);
 
 _SOKOL_PRIVATE void _sapp_macos_init_objc(void) {
 
@@ -2310,19 +2314,28 @@ _SOKOL_PRIVATE void _sapp_macos_init_objc(void) {
         meta->applicationDidFinishLaunching = sel_getUid("applicationDidFinishLaunching:");
         meta->applicationShouldTerminateAfterLastWindowClosed = sel_getUid("applicationShouldTerminateAfterLastWindowClosed:");
         meta->applicationWillTerminate = sel_getUid("applicationWillTerminate:");
-        class_addMethod(meta->cls,
-                        meta->applicationDidFinishLaunching,
-                        (IMP) _sapp_macos_applicationDidFinishLaunching,
-                        "v@:@");
-        class_addMethod(meta->cls,
-                        meta->applicationShouldTerminateAfterLastWindowClosed,
-                        (IMP) _sapp_macos_applicationShouldTerminateAfterLastWindowClosed,
-                        "i@:@");
-        class_addMethod(meta->cls,
-                        meta->applicationWillTerminate,
-                        (IMP) _sapp_macos_applicationWillTerminate,
-                        "v@:@");
+        class_addMethod(meta->cls, meta->applicationDidFinishLaunching, (IMP) _sapp_oc_appdlg_applicationDidFinishLaunching, "v@:@");
+        class_addMethod(meta->cls, meta->applicationShouldTerminateAfterLastWindowClosed, (IMP) _sapp_oc_appdlg_applicationShouldTerminateAfterLastWindowClosed, "i@:@");
+        class_addMethod(meta->cls, meta->applicationWillTerminate, (IMP) _sapp_oc_appdlg_applicationWillTerminate, "v@:@");
         objc_registerClassPair(meta->cls);
+    }
+
+    // setup the window delegate class
+    {
+        _sapp_oc_windlg_t* meta = &_sapp.oc.windlg;
+        meta->cls = objc_allocateClassPair(objc_getClass("NSObject"), "_sapp_macos_win_delegate", 0);
+        meta->windowShouldClose = sel_getUid("windowShouldClose:");
+        meta->windowDidResize = sel_getUid("windowDidResize:");
+        meta->windowDidMiniaturize = sel_getUid("windowDidMiniaturize:");
+        meta->windowDidDeminiaturize = sel_getUid("windowDidDeminiaturize:");
+        meta->windowDidEnterFullScreen = sel_getUid("windowDidEnterFullScreen:");
+        meta->windowDidExitFullScreen = sel_getUid("windowDidExitFullScreen:");
+        class_addMethod(meta->cls, meta->windowShouldClose, (IMP) _sapp_oc_windlg_windowShouldClose, "i@:@");
+        class_addMethod(meta->cls, meta->windowDidResize, (IMP) _sapp_oc_windlg_windowDidResize, "v@:@");
+        class_addMethod(meta->cls, meta->windowDidMiniaturize, (IMP) _sapp_oc_windlg_windowDidMiniaturize, "v@:@");
+        class_addMethod(meta->cls, meta->windowDidDeminiaturize, (IMP) _sapp_oc_windlg_windowDidDeminiaturize, "v@:@");
+        class_addMethod(meta->cls, meta->windowDidEnterFullScreen, (IMP) _sapp_oc_windlg_windowDidEnterFullScreen, "v@:@");
+        class_addMethod(meta->cls, meta->windowDidExitFullScreen, (IMP) _sapp_oc_windlg_windowDidExitFullScreen, "v@:@");
     }
 }
 
@@ -2348,19 +2361,19 @@ static inline id _sapp_oc_utf8string(const char* str) {
     return ((id(*)(id,SEL,const char*))objc_msgSend)((id)_sapp.oc.nsstring.cls, _sapp.oc.nsstring.stringWithUTF8String, str);
 }
 
-static inline void _sapp_oc_nsapp_shared_application(void) {
+static inline void _sapp_oc_nsapp_sharedApplication(void) {
     ((void(*)(id,SEL))objc_msgSend)((id)_sapp.oc.nsapp.cls, _sapp.oc.nsapp.sharedApplication);
 }
 
-static inline void _sapp_oc_nsapp_set_activation_policy(NSApplicationActivationPolicy policy) {
+static inline void _sapp_oc_nsapp_setActivationPolicy(NSApplicationActivationPolicy policy) {
     ((void(*)(id,SEL,NSApplicationActivationPolicy))objc_msgSend)(NSApp, _sapp.oc.nsapp.setActivationPolicy, policy);
 }
 
-static inline void _sapp_oc_nsapp_set_activate_ignoring_other_apps(BOOL b) {
+static inline void _sapp_oc_nsapp_setActivateIgnoringOtherApps(BOOL b) {
     ((void(*)(id,SEL,BOOL))objc_msgSend)(NSApp, _sapp.oc.nsapp.activateIgnoringOtherApps, b);
 }
 
-static inline void _sapp_oc_nsapp_set_delegate(id dlg) {
+static inline void _sapp_oc_nsapp_setDelegate(id dlg) {
     ((void(*)(id,SEL,id))objc_msgSend)(NSApp, _sapp.oc.nsapp.setDelegate, dlg);
 }
 
@@ -2368,7 +2381,7 @@ static inline void _sapp_oc_nsapp_run(void) {
     ((void(*)(id,SEL))objc_msgSend)(NSApp, _sapp.oc.nsapp.run);
 }
 
-static inline id _sapp_oc_nsscreen_main_screen(void) {
+static inline id _sapp_oc_nsscreen_mainScreen(void) {
     return ((id(*)(id,SEL))objc_msgSend)((id)_sapp.oc.nsscreen.cls, _sapp.oc.nsscreen.mainScreen);
 }
 
@@ -2376,39 +2389,39 @@ static inline NSRect _sapp_oc_nsscreen_frame(id self) {
     return ((NSRect(*)(id,SEL))objc_msgSend_stret)(self, _sapp.oc.nsscreen.frame);
 }
 
-static inline id _sapp_oc_nswindow_init_with_content_rect(id self, NSRect rect, NSWindowStyleMask style, NSBackingStoreType backing, BOOL defer) {
+static inline id _sapp_oc_nswindow_initWithContentRect(id self, NSRect rect, NSWindowStyleMask style, NSBackingStoreType backing, BOOL defer) {
     return ((id(*)(id,SEL,NSRect,NSWindowStyleMask,NSBackingStoreType,BOOL))objc_msgSend)(self, _sapp.oc.nswindow.initWithContentRect, rect, style, backing, defer);
 }
 
-static inline void _sapp_oc_nswindow_set_released_when_closed(id self, BOOL b) {
+static inline void _sapp_oc_nswindow_setReleasedWhenClosed(id self, BOOL b) {
     ((void(*)(id,SEL,BOOL))objc_msgSend)(self, _sapp.oc.nswindow.setReleasedWhenClosed, b);
 }
 
-static inline void _sapp_oc_nswindow_set_title(id self, const char* t) {
+static inline void _sapp_oc_nswindow_setTitle(id self, const char* t) {
     ((void(*)(id,SEL,id))objc_msgSend)(self, _sapp.oc.nswindow.setTitle, _sapp_oc_utf8string(t));
 }
 
-static inline void _sapp_oc_nswindow_set_accepts_mouse_moved_events(id self, BOOL b) {
+static inline void _sapp_oc_nswindow_setAcceptsMouseMovedEvents(id self, BOOL b) {
     ((void(*)(id,SEL,BOOL))objc_msgSend)(self, _sapp.oc.nswindow.setAcceptsMouseMovedEvents, b);
 }
 
-static inline void _sapp_oc_nswindow_set_restorable(id self, BOOL b) {
+static inline void _sapp_oc_nswindow_setRestorable(id self, BOOL b) {
     ((void(*)(id,SEL,BOOL))objc_msgSend)(self, _sapp.oc.nswindow.setRestorable, b);
 }
 
-static inline void _sapp_oc_nswindow_set_delegate(id self, id dlg) {
+static inline void _sapp_oc_nswindow_setDelegate(id self, id dlg) {
     ((void(*)(id,SEL,id))objc_msgSend)(self, _sapp.oc.nswindow.setDelegate, dlg);
 }
 
-static inline void _sapp_oc_nswindow_set_content_view(id self, id view) {
+static inline void _sapp_oc_nswindow_setContentView(id self, id view) {
     ((void(*)(id,SEL,id))objc_msgSend)(self, _sapp.oc.nswindow.setContentView, view);
 }
 
-static inline void _sapp_oc_nswindow_make_first_responder(id self, id view) {
+static inline void _sapp_oc_nswindow_makeFirstResponder(id self, id view) {
     ((void(*)(id,SEL,id))objc_msgSend)(self, _sapp.oc.nswindow.makeFirstResponder, view);
 }
 
-static inline void _sapp_oc_nswindow_toggle_fullscreen(id self, id sender) {
+static inline void _sapp_oc_nswindow_toggleFullScreen(id self, id sender) {
     ((void(*)(id,SEL,id))objc_msgSend)(self, _sapp.oc.nswindow.toggleFullScreen, sender);
 }
 
@@ -2416,15 +2429,15 @@ static inline void _sapp_oc_nswindow_center(id self) {
     ((void(*)(id,SEL))objc_msgSend)(self, _sapp.oc.nswindow.center);
 }
 
-static inline void _sapp_oc_nswindow_make_key_and_order_front(id self, id sender) {
+static inline void _sapp_oc_nswindow_makeKeyAndOrderFront(id self, id sender) {
     ((void(*)(id,SEL,id))objc_msgSend)(self, _sapp.oc.nswindow.makeKeyAndOrderFront, sender);
 }
 
-static inline NSPoint _sapp_oc_nswindow_mouse_location_outside_of_event_stream(id self) {
+static inline NSPoint _sapp_oc_nswindow_mouseLocationOutsideOfEventStream(id self) {
     return ((NSPoint(*)(id,SEL))objc_msgSend)(self, _sapp.oc.nswindow.mouseLocationOutsideOfEventStream);
 }
 
-static inline void _sapp_oc_nswindow_perform_close(id self, id sender) {
+static inline void _sapp_oc_nswindow_performClose(id self, id sender) {
     ((void(*)(id,SEL,id))objc_msgSend)(self, _sapp.oc.nswindow.performClose, sender);
 }
 
@@ -2562,11 +2575,11 @@ _SOKOL_PRIVATE void _sapp_macos_run(const sapp_desc* desc) {
     _sapp_macos_init_objc();
     _sapp_macos_init_keytable();
 
-    _sapp_oc_nsapp_shared_application();
-    _sapp_oc_nsapp_set_activation_policy(NSApplicationActivationPolicyRegular);
-    _sapp_oc_nsapp_set_activate_ignoring_other_apps(YES);
+    _sapp_oc_nsapp_sharedApplication();
+    _sapp_oc_nsapp_setActivationPolicy(NSApplicationActivationPolicyRegular);
+    _sapp_oc_nsapp_setActivateIgnoringOtherApps(YES);
     _sapp.macos.app_dlg = _sapp_oc_alloc_init(_sapp.oc.appdlg.cls);
-    _sapp_oc_nsapp_set_delegate(_sapp.macos.app_dlg);
+    _sapp_oc_nsapp_setDelegate(_sapp.macos.app_dlg);
     _sapp_oc_nsapp_run();
 
     // NOTE: [NSApp run] never returns, instead cleanup code
@@ -2611,12 +2624,12 @@ _SOKOL_PRIVATE void _sapp_macos_update_dimensions(void) {
 }
 
 void _sapp_macos_frame(void) {
-    const NSPoint mouse_pos = _sapp_oc_nswindow_mouse_location_outside_of_event_stream(_sapp.macos.window);
+    const NSPoint mouse_pos = _sapp_oc_nswindow_mouseLocationOutsideOfEventStream(_sapp.macos.window);
     _sapp.mouse_x = mouse_pos.x * _sapp.dpi_scale;
     _sapp.mouse_y = _sapp.framebuffer_height - (mouse_pos.y * _sapp.dpi_scale) - 1;
     _sapp_frame();
     if (_sapp.quit_requested || _sapp.quit_ordered) {
-        _sapp_oc_nswindow_perform_close(_sapp.macos.window, nil);
+        _sapp_oc_nswindow_performClose(_sapp.macos.window, nil);
     }
 }
 
@@ -2626,15 +2639,15 @@ _SOKOL_PRIVATE void _sapp_macos_toggle_fullscreen(void) {
        event handlers
     */
     _sapp.fullscreen = !_sapp.fullscreen;
-    _sapp_oc_nswindow_toggle_fullscreen(_sapp.macos.window, nil);
+    _sapp_oc_nswindow_toggleFullScreen(_sapp.macos.window, nil);
 }
 
-_SOKOL_PRIVATE void _sapp_macos_applicationDidFinishLaunching(id self, SEL cmd, id notification) {
+_SOKOL_PRIVATE void _sapp_oc_appdlg_applicationDidFinishLaunching(id self, SEL cmd, id notification) {
     _SOKOL_UNUSED(self);
     _SOKOL_UNUSED(cmd);
     _SOKOL_UNUSED(notification);
     if (_sapp.fullscreen) {
-        NSRect screen_rect = _sapp_oc_nsscreen_frame(_sapp_oc_nsscreen_main_screen());
+        NSRect screen_rect = _sapp_oc_nsscreen_frame(_sapp_oc_nsscreen_mainScreen());
         _sapp.window_width = screen_rect.size.width;
         _sapp.window_height = screen_rect.size.height;
         if (_sapp.desc.high_dpi) {
@@ -2654,13 +2667,13 @@ _SOKOL_PRIVATE void _sapp_macos_applicationDidFinishLaunching(id self, SEL cmd, 
         NSWindowStyleMaskResizable;
     NSRect window_rect = NSMakeRect(0, 0, _sapp.window_width, _sapp.window_height);
     _sapp.macos.window = _sapp_oc_alloc(_sapp.oc.nswindow.cls);
-    _sapp_oc_nswindow_init_with_content_rect(_sapp.macos.window, window_rect, style, NSBackingStoreBuffered, NO);
-    _sapp_oc_nswindow_set_released_when_closed(_sapp.macos.window, NO);
-    _sapp_oc_nswindow_set_title(_sapp.macos.window, _sapp.window_title);
-    _sapp_oc_nswindow_set_accepts_mouse_moved_events(_sapp.macos.window, YES);
-    _sapp_oc_nswindow_set_restorable(_sapp.macos.window, YES);
-    _sapp.macos.win_dlg = [[_sapp_macos_window_delegate alloc] init];
-    _sapp_oc_nswindow_set_delegate(_sapp.macos.window, _sapp.macos.win_dlg);
+    _sapp_oc_nswindow_initWithContentRect(_sapp.macos.window, window_rect, style, NSBackingStoreBuffered, NO);
+    _sapp_oc_nswindow_setReleasedWhenClosed(_sapp.macos.window, NO);
+    _sapp_oc_nswindow_setTitle(_sapp.macos.window, _sapp.window_title);
+    _sapp_oc_nswindow_setAcceptsMouseMovedEvents(_sapp.macos.window, YES);
+    _sapp_oc_nswindow_setRestorable(_sapp.macos.window, YES);
+    _sapp.macos.win_dlg = _sapp_oc_alloc_init(_sapp.oc.windlg.cls);
+    _sapp_oc_nswindow_setDelegate(_sapp.macos.window, _sapp.macos.win_dlg);
 
     #if defined(SOKOL_METAL)
         _sapp.macos.mtl_device = MTLCreateSystemDefaultDevice();
@@ -2673,8 +2686,8 @@ _SOKOL_PRIVATE void _sapp_macos_applicationDidFinishLaunching(id self, SEL cmd, 
         _sapp.macos.view.colorPixelFormat = MTLPixelFormatBGRA8Unorm;
         _sapp.macos.view.depthStencilPixelFormat = MTLPixelFormatDepth32Float_Stencil8;
         _sapp.macos.view.sampleCount = _sapp.sample_count;
-        _sapp_oc_nswindow_set_content_view(_sapp.macos.window, _sapp.macos.view);
-        _sapp_oc_nswindow_make_first_responder(_sapp.macos.window, _sapp.macos.view);
+        _sapp_oc_nswindow_setContentView(_sapp.macos.window, _sapp.macos.view);
+        _sapp_oc_nswindow_makeFirstResponder(_sapp.macos.window, _sapp.macos.view);
         if (!_sapp.desc.high_dpi) {
             CGSize drawable_size = { (CGFloat) _sapp.framebuffer_width, (CGFloat) _sapp.framebuffer_height };
             _sapp.macos.view.drawableSize = drawable_size;
@@ -2728,23 +2741,23 @@ _SOKOL_PRIVATE void _sapp_macos_applicationDidFinishLaunching(id self, SEL cmd, 
     _sapp.valid = true;
     if (_sapp.fullscreen) {
         /* on GL, this already toggles a rendered frame, so set the valid flag before */
-        _sapp_oc_nswindow_toggle_fullscreen(_sapp.macos.window, self);
+        _sapp_oc_nswindow_toggleFullScreen(_sapp.macos.window, self);
     }
     else {
         _sapp_oc_nswindow_center(_sapp.macos.window);
     }
-    _sapp_oc_nswindow_make_key_and_order_front(_sapp.macos.window, nil);
+    _sapp_oc_nswindow_makeKeyAndOrderFront(_sapp.macos.window, nil);
     _sapp_macos_update_dimensions();
 }
 
-_SOKOL_PRIVATE BOOL _sapp_macos_applicationShouldTerminateAfterLastWindowClosed(id self, SEL cmd, id sender) {
+_SOKOL_PRIVATE BOOL _sapp_oc_appdlg_applicationShouldTerminateAfterLastWindowClosed(id self, SEL cmd, id sender) {
     _SOKOL_UNUSED(self);
     _SOKOL_UNUSED(cmd);
     _SOKOL_UNUSED(sender);
     return YES;
 }
 
-_SOKOL_PRIVATE void _sapp_macos_applicationWillTerminate(id self, SEL cmd, id notification) {
+_SOKOL_PRIVATE void _sapp_oc_appdlg_applicationWillTerminate(id self, SEL cmd, id notification) {
     _SOKOL_UNUSED(self);
     _SOKOL_UNUSED(cmd);
     _SOKOL_UNUSED(notification);
@@ -2798,8 +2811,9 @@ _SOKOL_PRIVATE void _sapp_macos_app_event(sapp_event_type type) {
     }
 }
 
-@implementation _sapp_macos_window_delegate
-- (BOOL)windowShouldClose:(id)sender {
+_SOKOL_PRIVATE BOOL _sapp_oc_windlg_windowShouldClose(id self, SEL cmd, id sender) {
+    _SOKOL_UNUSED(self);
+    _SOKOL_UNUSED(cmd);
     _SOKOL_UNUSED(sender);
     /* only give user-code a chance to intervene when sapp_quit() wasn't already called */
     if (!_sapp.quit_ordered) {
@@ -2821,7 +2835,9 @@ _SOKOL_PRIVATE void _sapp_macos_app_event(sapp_event_type type) {
     }
 }
 
-- (void)windowDidResize:(NSNotification*)notification {
+_SOKOL_PRIVATE void _sapp_oc_windlg_windowDidResize(id self, SEL cmd, id notification) {
+    _SOKOL_UNUSED(self);
+    _SOKOL_UNUSED(cmd);
     _SOKOL_UNUSED(notification);
     _sapp_macos_update_dimensions();
     if (!_sapp.first_frame) {
@@ -2829,26 +2845,33 @@ _SOKOL_PRIVATE void _sapp_macos_app_event(sapp_event_type type) {
     }
 }
 
-- (void)windowDidMiniaturize:(NSNotification*)notification {
+_SOKOL_PRIVATE void _sapp_oc_windlg_windowDidMiniaturize(id self, SEL cmd, id notification) {
+    _SOKOL_UNUSED(self);
+    _SOKOL_UNUSED(cmd);
     _SOKOL_UNUSED(notification);
     _sapp_macos_app_event(SAPP_EVENTTYPE_ICONIFIED);
 }
 
-- (void)windowDidDeminiaturize:(NSNotification*)notification {
+_SOKOL_PRIVATE void _sapp_oc_windlg_windowDidDeminiaturize(id self, SEL cmd, id notification) {
+    _SOKOL_UNUSED(self);
+    _SOKOL_UNUSED(cmd);
     _SOKOL_UNUSED(notification);
     _sapp_macos_app_event(SAPP_EVENTTYPE_RESTORED);
 }
 
-- (void)windowDidEnterFullScreen:(NSNotification*)notification {
+_SOKOL_PRIVATE void _sapp_oc_windlg_windowDidEnterFullScreen(id self, SEL cmd, id notification) {
+    _SOKOL_UNUSED(self);
+    _SOKOL_UNUSED(cmd);
     _SOKOL_UNUSED(notification);
     _sapp.fullscreen = true;
 }
 
-- (void)windowDidExitFullScreen:(NSNotification*)notification {
+_SOKOL_PRIVATE void _sapp_oc_windlg_windowDidExitFullScreen(id self, SEL cmd, id notification) {
+    _SOKOL_UNUSED(self);
+    _SOKOL_UNUSED(cmd);
     _SOKOL_UNUSED(notification);
     _sapp.fullscreen = false;
 }
-@end
 
 #if defined(SOKOL_METAL)
 @implementation _sapp_macos_mtk_view_dlg
