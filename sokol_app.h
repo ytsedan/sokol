@@ -1246,26 +1246,40 @@ typedef struct {
 
 typedef struct {
     Class cls;
-    SEL applicationDidFinishLaunching;
-    SEL applicationShouldTerminateAfterLastWindowClosed;
-    SEL applicationWillTerminate;
 } _sapp_oc_appdlg_t;
 
 typedef struct {
     Class cls;
-    SEL windowShouldClose;
-    SEL windowDidResize;
-    SEL windowDidMiniaturize;
-    SEL windowDidDeminiaturize;
-    SEL windowDidEnterFullScreen;
-    SEL windowDidExitFullScreen;
 } _sapp_oc_windlg_t;
 
+#if defined(SOKOL_METAL)
 typedef struct {
     Class cls;
-    SEL drawInMTKView;
-    SEL drawableSizeWillChange;
-} _sapp_oc_mtkviewdlg_t;
+    SEL drawableSize;
+    SEL setDrawableSize;
+    SEL layer;
+    SEL frame;
+    SEL bounds;
+    SEL convertRectToBacking;
+    SEL updateTrackingAreas;
+    SEL setPreferredFramesPerSecond;
+    SEL setDevice;
+    SEL setColorPixelFormat;
+    SEL setDepthStencilPixelFormat;
+    SEL setSampleCount;
+    SEL currentRenderPassDescriptor;
+    SEL currentDrawable;
+} _sapp_oc_mtkview_t;
+
+#elif defined(SOKOL_GLCORE33)
+typedef struct {
+    Class cls;
+    SEL updateTrackingAreas;
+    SEL setWantsBestResolutionOpenGLSurface;
+    SEL timerFired;
+    SEL openGLContext;
+} _sapp_oc_nsglview;
+#endif
 
 typedef struct {
     _sapp_oc_nsobject_t nsobject;
@@ -1275,14 +1289,12 @@ typedef struct {
     _sapp_oc_nswindow_t nswindow;
     _sapp_oc_appdlg_t appdlg;
     _sapp_oc_windlg_t windlg;
-    _sapp_oc_mtkviewdlg_t mtkviewdlg;
+    #if defined(SOKOL_METAL)
+    _sapp_oc_mtkview_t view;
+    #endif
 } _sapp_oc_t;
 
 #if defined(SOKOL_METAL)
-    @interface _sapp_macos_mtk_view_dlg : NSObject<MTKViewDelegate>
-    @end
-    @interface _sapp_macos_view : MTKView
-    @end
 #elif defined(SOKOL_GLCORE33)
     @interface _sapp_macos_view : NSOpenGLView
     - (void)timerFired:(id)sender;
@@ -1297,10 +1309,9 @@ typedef struct {
     id window;
     id win_dlg;
     NSTrackingArea* tracking_area;
-    _sapp_macos_view* view;
+    id view;
     #if defined(SOKOL_METAL)
-        _sapp_macos_mtk_view_dlg* mtk_view_dlg;
-        id<MTLDevice> mtl_device;
+        id mtl_device;
     #endif
 } _sapp_macos_t;
 
@@ -2245,12 +2256,37 @@ _SOKOL_PRIVATE void _sapp_frame(void) {
 _SOKOL_PRIVATE void _sapp_oc_appdlg_applicationDidFinishLaunching(id self, SEL cmd, id aNotification);
 _SOKOL_PRIVATE BOOL _sapp_oc_appdlg_applicationShouldTerminateAfterLastWindowClosed(id self, SEL cmd, id sender);
 _SOKOL_PRIVATE void _sapp_oc_appdlg_applicationWillTerminate(id self, SEL cmd, id aNotification);
+
 _SOKOL_PRIVATE BOOL _sapp_oc_windlg_windowShouldClose(id self, SEL cmd, id sender);
 _SOKOL_PRIVATE void _sapp_oc_windlg_windowDidResize(id self, SEL cmd, id notification);
 _SOKOL_PRIVATE void _sapp_oc_windlg_windowDidMiniaturize(id self, SEL cmd, id notification);
 _SOKOL_PRIVATE void _sapp_oc_windlg_windowDidDeminiaturize(id self, SEL cmd, id notification);
 _SOKOL_PRIVATE void _sapp_oc_windlg_windowDidEnterFullScreen(id self, SEL cmd, id notification);
 _SOKOL_PRIVATE void _sapp_oc_windlg_windowDidExitFullScreen(id self, SEL cmd, id notification);
+
+#if defined(SOKOL_METAL)
+_SOKOL_PRIVATE void _sapp_oc_view_drawRect(id self, SEL cmd, CGRect rect);
+#endif
+_SOKOL_PRIVATE BOOL _sapp_oc_view_isOpaque(id self, SEL cmd);
+_SOKOL_PRIVATE BOOL _sapp_oc_view_canBecomeKeyView(id self, SEL cmd);
+_SOKOL_PRIVATE BOOL _sapp_oc_view_acceptsFirstResponder(id self, SEL cmd);
+_SOKOL_PRIVATE void _sapp_oc_view_updateTrackingAreas(id self, SEL cmd);
+_SOKOL_PRIVATE void _sapp_oc_view_mouseEntered(id self, SEL cmd, id event);
+_SOKOL_PRIVATE void _sapp_oc_view_mouseExited(id self, SEL cmd, id event);
+_SOKOL_PRIVATE void _sapp_oc_view_mouseDown(id self, SEL cmd, id event);
+_SOKOL_PRIVATE void _sapp_oc_view_mouseUp(id self, SEL cmd, id event);
+_SOKOL_PRIVATE void _sapp_oc_view_rightMouseDown(id self, SEL cmd, id event);
+_SOKOL_PRIVATE void _sapp_oc_view_rightMouseUp(id self, SEL cmd, id event);
+_SOKOL_PRIVATE void _sapp_oc_view_otherMouseDown(id self, SEL cmd, id event);
+_SOKOL_PRIVATE void _sapp_oc_view_otherMouseUp(id self, SEL cmd, id event);
+_SOKOL_PRIVATE void _sapp_oc_view_mouseMoved(id self, SEL cmd, id event);
+_SOKOL_PRIVATE void _sapp_oc_view_mouseDragged(id self, SEL cmd, id event);
+_SOKOL_PRIVATE void _sapp_oc_view_rightMouseDragged(id self, SEL cmd, id event);
+_SOKOL_PRIVATE void _sapp_oc_view_scrollWheel(id self, SEL cmd, id event);
+_SOKOL_PRIVATE void _sapp_oc_view_keyDown(id self, SEL cmd, id event);
+_SOKOL_PRIVATE void _sapp_oc_view_keyUp(id self, SEL cmd, id event);
+_SOKOL_PRIVATE void _sapp_oc_view_flagsChanged(id self, SEL cmd, id event);
+_SOKOL_PRIVATE void _sapp_oc_view_cursorUpdate(id self, SEL cmd, id event);
 
 _SOKOL_PRIVATE void _sapp_macos_init_objc(void) {
 
@@ -2311,12 +2347,9 @@ _SOKOL_PRIVATE void _sapp_macos_init_objc(void) {
     {
         _sapp_oc_appdlg_t* meta = &_sapp.oc.appdlg;
         meta->cls = objc_allocateClassPair(objc_getClass("NSObject"), "_sapp_macos_app_delegate", 0);
-        meta->applicationDidFinishLaunching = sel_getUid("applicationDidFinishLaunching:");
-        meta->applicationShouldTerminateAfterLastWindowClosed = sel_getUid("applicationShouldTerminateAfterLastWindowClosed:");
-        meta->applicationWillTerminate = sel_getUid("applicationWillTerminate:");
-        class_addMethod(meta->cls, meta->applicationDidFinishLaunching, (IMP) _sapp_oc_appdlg_applicationDidFinishLaunching, "v@:@");
-        class_addMethod(meta->cls, meta->applicationShouldTerminateAfterLastWindowClosed, (IMP) _sapp_oc_appdlg_applicationShouldTerminateAfterLastWindowClosed, "i@:@");
-        class_addMethod(meta->cls, meta->applicationWillTerminate, (IMP) _sapp_oc_appdlg_applicationWillTerminate, "v@:@");
+        class_addMethod(meta->cls, sel_getUid("applicationDidFinishLaunching:"), (IMP) _sapp_oc_appdlg_applicationDidFinishLaunching, "v@:@");
+        class_addMethod(meta->cls, sel_getUid("applicationShouldTerminateAfterLastWindowClosed:"), (IMP) _sapp_oc_appdlg_applicationShouldTerminateAfterLastWindowClosed, "i@:@");
+        class_addMethod(meta->cls, sel_getUid("applicationWillTerminate:"), (IMP) _sapp_oc_appdlg_applicationWillTerminate, "v@:@");
         objc_registerClassPair(meta->cls);
     }
 
@@ -2324,23 +2357,69 @@ _SOKOL_PRIVATE void _sapp_macos_init_objc(void) {
     {
         _sapp_oc_windlg_t* meta = &_sapp.oc.windlg;
         meta->cls = objc_allocateClassPair(objc_getClass("NSObject"), "_sapp_macos_win_delegate", 0);
-        meta->windowShouldClose = sel_getUid("windowShouldClose:");
-        meta->windowDidResize = sel_getUid("windowDidResize:");
-        meta->windowDidMiniaturize = sel_getUid("windowDidMiniaturize:");
-        meta->windowDidDeminiaturize = sel_getUid("windowDidDeminiaturize:");
-        meta->windowDidEnterFullScreen = sel_getUid("windowDidEnterFullScreen:");
-        meta->windowDidExitFullScreen = sel_getUid("windowDidExitFullScreen:");
-        class_addMethod(meta->cls, meta->windowShouldClose, (IMP) _sapp_oc_windlg_windowShouldClose, "i@:@");
-        class_addMethod(meta->cls, meta->windowDidResize, (IMP) _sapp_oc_windlg_windowDidResize, "v@:@");
-        class_addMethod(meta->cls, meta->windowDidMiniaturize, (IMP) _sapp_oc_windlg_windowDidMiniaturize, "v@:@");
-        class_addMethod(meta->cls, meta->windowDidDeminiaturize, (IMP) _sapp_oc_windlg_windowDidDeminiaturize, "v@:@");
-        class_addMethod(meta->cls, meta->windowDidEnterFullScreen, (IMP) _sapp_oc_windlg_windowDidEnterFullScreen, "v@:@");
-        class_addMethod(meta->cls, meta->windowDidExitFullScreen, (IMP) _sapp_oc_windlg_windowDidExitFullScreen, "v@:@");
+        class_addMethod(meta->cls, sel_getUid("windowShouldClose:"), (IMP) _sapp_oc_windlg_windowShouldClose, "i@:@");
+        class_addMethod(meta->cls, sel_getUid("windowDidResize:"), (IMP) _sapp_oc_windlg_windowDidResize, "v@:@");
+        class_addMethod(meta->cls, sel_getUid("windowDidMiniaturize:"), (IMP) _sapp_oc_windlg_windowDidMiniaturize, "v@:@");
+        class_addMethod(meta->cls, sel_getUid("windowDidDeminiaturize:"), (IMP) _sapp_oc_windlg_windowDidDeminiaturize, "v@:@");
+        class_addMethod(meta->cls, sel_getUid("windowDidEnterFullScreen:"), (IMP) _sapp_oc_windlg_windowDidEnterFullScreen, "v@:@");
+        class_addMethod(meta->cls, sel_getUid("windowDidExitFullScreen:"), (IMP) _sapp_oc_windlg_windowDidExitFullScreen, "v@:@");
+        objc_registerClassPair(meta->cls);
     }
+
+    #if defined(SOKOL_METAL)
+    // MTKView
+    {
+        _sapp_oc_mtkview_t* meta = &_sapp.oc.view;
+        meta->cls = objc_allocateClassPair(objc_getClass("MTKView"), "_sapp_macos_view", 0);
+        meta->drawableSize = sel_getUid("drawableSize");
+        meta->setDrawableSize = sel_getUid("setDrawableSize:");
+        meta->layer = sel_getUid("layer");
+        meta->frame = sel_getUid("frame");
+        meta->bounds = sel_getUid("bounds");
+        meta->convertRectToBacking = sel_getUid("convertRectToBacking:");
+        meta->updateTrackingAreas = sel_getUid("updateTrackingAreas");
+        meta->setPreferredFramesPerSecond = sel_getUid("setPreferredFramesPerSecond:");
+        meta->setDevice = sel_getUid("setDevice:");
+        meta->setColorPixelFormat = sel_getUid("setColorPixelFormat:");
+        meta->setDepthStencilPixelFormat = sel_getUid("setDepthStencilPixelFormat:");
+        meta->setSampleCount = sel_getUid("setSampleCount:");
+        meta->currentRenderPassDescriptor = sel_getUid("currentRenderPassDescriptor");
+        meta->currentDrawable = sel_getUid("currentDrawable");
+
+        #if defined(SOKOL_METAL)
+        class_addMethod(meta->cls, sel_getUid("drawRect:"), (IMP) _sapp_oc_view_drawRect, "v@:{CGRect={CGPoint=ff}{CGPoint=ff}}");
+        #endif
+        class_addMethod(meta->cls, sel_getUid("isOpaque"), (IMP) _sapp_oc_view_isOpaque, "i@:");
+        class_addMethod(meta->cls, sel_getUid("canBecomeKeyView"), (IMP) _sapp_oc_view_canBecomeKeyView, "i@:");
+        class_addMethod(meta->cls, sel_getUid("acceptsFirstResponder"), (IMP) _sapp_oc_view_acceptsFirstResponder, "i@:");
+        class_addMethod(meta->cls, sel_getUid("updateTrackingAreas"), (IMP) _sapp_oc_view_updateTrackingAreas, "v@:");
+        class_addMethod(meta->cls, sel_getUid("mouseEntered:"), (IMP) _sapp_oc_view_mouseEntered, "v@:@");
+        class_addMethod(meta->cls, sel_getUid("mouseExited:"), (IMP) _sapp_oc_view_mouseExited, "v@:@");
+        class_addMethod(meta->cls, sel_getUid("mouseDown:"), (IMP) _sapp_oc_view_mouseDown, "v@:@");
+        class_addMethod(meta->cls, sel_getUid("mouseUp:"), (IMP) _sapp_oc_view_mouseUp, "v@:@");
+        class_addMethod(meta->cls, sel_getUid("rightMouseDown:"), (IMP) _sapp_oc_view_rightMouseDown, "v@:@");
+        class_addMethod(meta->cls, sel_getUid("rightMouseUp:"), (IMP) _sapp_oc_view_rightMouseUp, "v@:@");
+        class_addMethod(meta->cls, sel_getUid("otherMouseDown:"), (IMP) _sapp_oc_view_otherMouseDown, "v@:@");
+        class_addMethod(meta->cls, sel_getUid("mouseMoved:"), (IMP) _sapp_oc_view_mouseMoved, "v@:@");
+        class_addMethod(meta->cls, sel_getUid("mouseDragged:"), (IMP) _sapp_oc_view_mouseDragged, "v@:@");
+        class_addMethod(meta->cls, sel_getUid("rightMouseDragged:"), (IMP) _sapp_oc_view_rightMouseDragged, "v@:@");
+        class_addMethod(meta->cls, sel_getUid("scrollWheel:"), (IMP) _sapp_oc_view_scrollWheel, "v@:@");
+        class_addMethod(meta->cls, sel_getUid("keyDown:"), (IMP) _sapp_oc_view_keyDown, "v@:@");
+        class_addMethod(meta->cls, sel_getUid("keyUp:"), (IMP) _sapp_oc_view_keyUp, "v@:@");
+        class_addMethod(meta->cls, sel_getUid("flagsChanged:"), (IMP) _sapp_oc_view_flagsChanged, "v@:@");
+        class_addMethod(meta->cls, sel_getUid("cursorUpdate:"), (IMP) _sapp_oc_view_cursorUpdate, "v@:@");
+
+        objc_registerClassPair(meta->cls);
+    }
+    #endif
 }
 
 static inline void _sapp_macos_discard_objc(void) {
     objc_disposeClassPair(_sapp.oc.appdlg.cls);
+    objc_disposeClassPair(_sapp.oc.windlg.cls);
+    #if defined(SOKOL_METAL)
+        objc_disposeClassPair(_sapp.oc.view.cls);
+    #endif
 }
 
 static inline id _sapp_oc_alloc(Class cls) {
@@ -2439,6 +2518,62 @@ static inline NSPoint _sapp_oc_nswindow_mouseLocationOutsideOfEventStream(id sel
 
 static inline void _sapp_oc_nswindow_performClose(id self, id sender) {
     ((void(*)(id,SEL,id))objc_msgSend)(self, _sapp.oc.nswindow.performClose, sender);
+}
+
+static inline CGSize _sapp_oc_mtkview_drawableSize(id self) {
+    return ((CGSize(*)(id,SEL))objc_msgSend)(self, _sapp.oc.view.drawableSize);
+}
+
+static inline void _sapp_oc_mtkview_setDrawableSize(id self, CGSize size) {
+    ((void(*)(id,SEL,CGSize))objc_msgSend)(self, _sapp.oc.view.setDrawableSize, size);
+}
+
+static inline id _sapp_oc_nsview_layer(id self) {
+    return ((id(*)(id,SEL))objc_msgSend)(self, _sapp.oc.view.layer);
+}
+
+static inline NSRect _sapp_oc_nsview_frame(id self) {
+    return ((NSRect(*)(id,SEL))objc_msgSend_stret)(self, _sapp.oc.view.frame);
+}
+
+static inline NSRect _sapp_oc_nsview_bounds(id self) {
+    return ((NSRect(*)(id,SEL))objc_msgSend_stret)(self, _sapp.oc.view.bounds);
+}
+
+static inline NSRect _sapp_oc_nsview_convertRectToBacking(id self, NSRect r) {
+    return ((NSRect(*)(id,SEL,NSRect))objc_msgSend_stret)(self, _sapp.oc.view.convertRectToBacking, r);
+}
+
+static inline void _sapp_oc_nsview_updateTrackingAreas(id self) {
+    ((void(*)(id,SEL))objc_msgSend)(self, _sapp.oc.view.updateTrackingAreas);
+}
+
+static inline void _sapp_oc_mtkview_setPreferredFramesPerSecond(id self, NSInteger fps) {
+    ((void(*)(id,SEL,NSInteger))objc_msgSend)(self, _sapp.oc.view.setPreferredFramesPerSecond, fps);
+}
+
+static inline void _sapp_oc_mtkview_setDevice(id self, id device) {
+    ((void(*)(id,SEL,id))objc_msgSend)(self, _sapp.oc.view.setDevice, device);
+}
+
+static inline void _sapp_oc_mtkview_setColorPixelFormat(id self, MTLPixelFormat fmt) {
+    ((void(*)(id,SEL,MTLPixelFormat))objc_msgSend)(self, _sapp.oc.view.setColorPixelFormat, fmt);
+}
+
+static inline void _sapp_oc_mtkview_setDepthStencilPixelFormat(id self, MTLPixelFormat fmt) {
+    ((void(*)(id,SEL,MTLPixelFormat))objc_msgSend)(self, _sapp.oc.view.setDepthStencilPixelFormat, fmt);
+}
+
+static inline void _sapp_oc_mtkview_setSampleCount(id self, NSUInteger count) {
+    ((void(*)(id,SEL,NSUInteger))objc_msgSend)(self, _sapp.oc.view.setSampleCount, count);
+}
+
+static inline id _sapp_oc_mtkview_currentRenderPassDescriptor(id self) {
+    return ((id(*)(id,SEL))objc_msgSend)(self, _sapp.oc.view.currentRenderPassDescriptor);
+}
+
+static inline id _sapp_oc_mtkview_currentDrawable(id self) {
+    return ((id(*)(id,SEL))objc_msgSend)(self, _sapp.oc.view.currentDrawable);
 }
 
 _SOKOL_PRIVATE void _sapp_macos_init_keytable(void) {
@@ -2562,7 +2697,6 @@ _SOKOL_PRIVATE void _sapp_macos_discard_state(void) {
     _SAPP_OC_RELEASE(_sapp.macos.win_dlg);
     _SAPP_OC_RELEASE(_sapp.macos.view);
     #if defined(SOKOL_METAL)
-        _SAPP_OC_RELEASE(_sapp.macos.mtk_view_dlg);
         _SAPP_OC_RELEASE(_sapp.macos.mtl_device);
     #endif
     _SAPP_OC_RELEASE(_sapp.macos.window);
@@ -2597,7 +2731,7 @@ int main(int argc, char* argv[]) {
 
 _SOKOL_PRIVATE void _sapp_macos_update_dimensions(void) {
     #if defined(SOKOL_METAL)
-        const CGSize fb_size = [_sapp.macos.view drawableSize];
+        const CGSize fb_size = _sapp_oc_mtkview_drawableSize(_sapp.macos.view);
         _sapp.framebuffer_width = fb_size.width;
         _sapp.framebuffer_height = fb_size.height;
     #elif defined(SOKOL_GLCORE33)
@@ -2605,7 +2739,7 @@ _SOKOL_PRIVATE void _sapp_macos_update_dimensions(void) {
         _sapp.framebuffer_width = fb_rect.size.width;
         _sapp.framebuffer_height = fb_rect.size.height;
     #endif
-    const NSRect bounds = [_sapp.macos.view bounds];
+    const NSRect bounds = _sapp_oc_nsview_bounds(_sapp.macos.view);
     _sapp.window_width = bounds.size.width;
     _sapp.window_height = bounds.size.height;
     if (_sapp.framebuffer_width == 0) {
@@ -2677,22 +2811,21 @@ _SOKOL_PRIVATE void _sapp_oc_appdlg_applicationDidFinishLaunching(id self, SEL c
 
     #if defined(SOKOL_METAL)
         _sapp.macos.mtl_device = MTLCreateSystemDefaultDevice();
-        _sapp.macos.mtk_view_dlg = [[_sapp_macos_mtk_view_dlg alloc] init];
-        _sapp.macos.view = [[_sapp_macos_view alloc] init];
-        [_sapp.macos.view updateTrackingAreas];
-        _sapp.macos.view.preferredFramesPerSecond = 60 / _sapp.swap_interval;
-        _sapp.macos.view.delegate = _sapp.macos.mtk_view_dlg;
-        _sapp.macos.view.device = _sapp.macos.mtl_device;
-        _sapp.macos.view.colorPixelFormat = MTLPixelFormatBGRA8Unorm;
-        _sapp.macos.view.depthStencilPixelFormat = MTLPixelFormatDepth32Float_Stencil8;
-        _sapp.macos.view.sampleCount = _sapp.sample_count;
+        _sapp.macos.view = _sapp_oc_alloc_init(_sapp.oc.view.cls);
+        _sapp_oc_nsview_updateTrackingAreas(_sapp.macos.view);
+        _sapp_oc_mtkview_setPreferredFramesPerSecond(_sapp.macos.view, 60 / _sapp.swap_interval);
+        _sapp_oc_mtkview_setDevice(_sapp.macos.view, _sapp.macos.mtl_device);
+        _sapp_oc_mtkview_setColorPixelFormat(_sapp.macos.view, MTLPixelFormatBGRA8Unorm);
+        _sapp_oc_mtkview_setDepthStencilPixelFormat(_sapp.macos.view, MTLPixelFormatDepth32Float_Stencil8);
+        _sapp_oc_mtkview_setSampleCount(_sapp.macos.view, _sapp.sample_count);
         _sapp_oc_nswindow_setContentView(_sapp.macos.window, _sapp.macos.view);
         _sapp_oc_nswindow_makeFirstResponder(_sapp.macos.window, _sapp.macos.view);
         if (!_sapp.desc.high_dpi) {
             CGSize drawable_size = { (CGFloat) _sapp.framebuffer_width, (CGFloat) _sapp.framebuffer_height };
-            _sapp.macos.view.drawableSize = drawable_size;
+            _sapp_oc_mtkview_setDrawableSize(_sapp.macos.view, drawable_size);
         }
-        _sapp.macos.view.layer.magnificationFilter = kCAFilterNearest;
+        // FIXME!
+        [_sapp_oc_nsview_layer(_sapp.macos.view) setMagnificationFilter:kCAFilterNearest];
     #elif defined(SOKOL_GLCORE33)
         NSOpenGLPixelFormatAttribute attrs[32];
         int i = 0;
@@ -2873,6 +3006,7 @@ _SOKOL_PRIVATE void _sapp_oc_windlg_windowDidExitFullScreen(id self, SEL cmd, id
     _sapp.fullscreen = false;
 }
 
+/*
 #if defined(SOKOL_METAL)
 @implementation _sapp_macos_mtk_view_dlg
 - (void)drawInMTKView:(MTKView*)view {
@@ -2884,12 +3018,11 @@ _SOKOL_PRIVATE void _sapp_oc_windlg_windowDidExitFullScreen(id self, SEL cmd, id
 - (void)mtkView:(MTKView*)view drawableSizeWillChange:(CGSize)size {
     _SOKOL_UNUSED(view);
     _SOKOL_UNUSED(size);
-    /* this is required by the protocol, but we can't do anything useful here */
 }
 @end
 #endif
+*/
 
-@implementation _sapp_macos_view
 #if defined(SOKOL_GLCORE33)
 /* NOTE: this is a hack/fix when the initial window size has been clipped by
     macOS because it didn't fit on the screen, in that case the
@@ -2922,16 +3055,37 @@ _SOKOL_PRIVATE void _sapp_oc_windlg_windowDidExitFullScreen(id self, SEL cmd, id
 }
 #endif
 
-- (BOOL)isOpaque {
+#if defined(SOKOL_METAL)
+_SOKOL_PRIVATE void _sapp_oc_view_drawRect(id self, SEL cmd, CGRect rect) {
+    _SOKOL_UNUSED(self);
+    _SOKOL_UNUSED(cmd);
+    _SOKOL_UNUSED(rect);
+    @autoreleasepool {
+        _sapp_macos_frame();
+    }
+}
+#endif
+
+_SOKOL_PRIVATE BOOL _sapp_oc_view_isOpaque(id self, SEL cmd) {
+    _SOKOL_UNUSED(self); _SOKOL_UNUSED(cmd);
     return YES;
 }
-- (BOOL)canBecomeKey {
+
+_SOKOL_PRIVATE BOOL _sapp_oc_view_canBecomeKeyView(id self, SEL cmd) {
+    _SOKOL_UNUSED(self); _SOKOL_UNUSED(cmd);
     return YES;
 }
-- (BOOL)acceptsFirstResponder {
+
+_SOKOL_PRIVATE BOOL _sapp_oc_view_acceptsFirstResponder(id self, SEL cmd) {
+    _SOKOL_UNUSED(self); _SOKOL_UNUSED(cmd);
     return YES;
 }
-- (void)updateTrackingAreas {
+
+_SOKOL_PRIVATE void _sapp_oc_view_updateTrackingAreas(id self, SEL cmd) {
+/*
+    FIXME FIXME FIXME
+
+    _SOKOL_UNUSED(cmd);
     if (_sapp.macos.tracking_area != nil) {
         [self removeTrackingArea:_sapp.macos.tracking_area];
         _SAPP_OC_RELEASE(_sapp.macos.tracking_area);
@@ -2945,55 +3099,80 @@ _SOKOL_PRIVATE void _sapp_oc_windlg_windowDidExitFullScreen(id self, SEL cmd, id
     _sapp.macos.tracking_area = [[NSTrackingArea alloc] initWithRect:[self bounds] options:options owner:self userInfo:nil];
     [self addTrackingArea:_sapp.macos.tracking_area];
     [super updateTrackingAreas];
+*/
 }
-- (void)mouseEntered:(NSEvent*)event {
-    _sapp_macos_mouse_event(SAPP_EVENTTYPE_MOUSE_ENTER, SAPP_MOUSEBUTTON_INVALID, _sapp_macos_mod(event.modifierFlags));
+
+_SOKOL_PRIVATE void _sapp_oc_view_mouseEntered(id self, SEL cmd, id event) {
+    _SOKOL_UNUSED(self); _SOKOL_UNUSED(cmd);
+    _sapp_macos_mouse_event(SAPP_EVENTTYPE_MOUSE_ENTER, SAPP_MOUSEBUTTON_INVALID, _sapp_macos_mod([event modifierFlags]));
 }
-- (void)mouseExited:(NSEvent*)event {
-    _sapp_macos_mouse_event(SAPP_EVENTTYPE_MOUSE_LEAVE, SAPP_MOUSEBUTTON_INVALID, _sapp_macos_mod(event.modifierFlags));
+
+_SOKOL_PRIVATE void _sapp_oc_view_mouseExited(id self, SEL cmd, id event) {
+    _SOKOL_UNUSED(self); _SOKOL_UNUSED(cmd);
+    _sapp_macos_mouse_event(SAPP_EVENTTYPE_MOUSE_LEAVE, SAPP_MOUSEBUTTON_INVALID, _sapp_macos_mod([event modifierFlags]));
 }
-- (void)mouseDown:(NSEvent*)event {
-    _sapp_macos_mouse_event(SAPP_EVENTTYPE_MOUSE_DOWN, SAPP_MOUSEBUTTON_LEFT, _sapp_macos_mod(event.modifierFlags));
+
+_SOKOL_PRIVATE void _sapp_oc_view_mouseDown(id self, SEL cmd, id event) {
+    _SOKOL_UNUSED(self); _SOKOL_UNUSED(cmd);
+    _sapp_macos_mouse_event(SAPP_EVENTTYPE_MOUSE_DOWN, SAPP_MOUSEBUTTON_LEFT, _sapp_macos_mod([event modifierFlags]));
 }
-- (void)mouseUp:(NSEvent*)event {
-    _sapp_macos_mouse_event(SAPP_EVENTTYPE_MOUSE_UP, SAPP_MOUSEBUTTON_LEFT, _sapp_macos_mod(event.modifierFlags));
+
+_SOKOL_PRIVATE void _sapp_oc_view_mouseUp(id self, SEL cmd, id event) {
+    _SOKOL_UNUSED(self); _SOKOL_UNUSED(cmd);
+    _sapp_macos_mouse_event(SAPP_EVENTTYPE_MOUSE_UP, SAPP_MOUSEBUTTON_LEFT, _sapp_macos_mod([event modifierFlags]));
 }
-- (void)rightMouseDown:(NSEvent*)event {
-    _sapp_macos_mouse_event(SAPP_EVENTTYPE_MOUSE_DOWN, SAPP_MOUSEBUTTON_RIGHT, _sapp_macos_mod(event.modifierFlags));
+
+_SOKOL_PRIVATE void _sapp_oc_view_rightMouseDown(id self, SEL cmd, id event) {
+    _SOKOL_UNUSED(self); _SOKOL_UNUSED(cmd);
+    _sapp_macos_mouse_event(SAPP_EVENTTYPE_MOUSE_DOWN, SAPP_MOUSEBUTTON_RIGHT, _sapp_macos_mod([event modifierFlags]));
 }
-- (void)rightMouseUp:(NSEvent*)event {
-    _sapp_macos_mouse_event(SAPP_EVENTTYPE_MOUSE_UP, SAPP_MOUSEBUTTON_RIGHT, _sapp_macos_mod(event.modifierFlags));
+
+_SOKOL_PRIVATE void _sapp_oc_view_rightMouseUp(id self, SEL cmd, id event) {
+    _SOKOL_UNUSED(self); _SOKOL_UNUSED(cmd);
+    _sapp_macos_mouse_event(SAPP_EVENTTYPE_MOUSE_UP, SAPP_MOUSEBUTTON_RIGHT, _sapp_macos_mod([event modifierFlags]));
 }
-- (void)otherMouseDown:(NSEvent*)event {
-    if (2 == event.buttonNumber) {
-        _sapp_macos_mouse_event(SAPP_EVENTTYPE_MOUSE_DOWN, SAPP_MOUSEBUTTON_MIDDLE, _sapp_macos_mod(event.modifierFlags));
+
+_SOKOL_PRIVATE void _sapp_oc_view_otherMouseDown(id self, SEL cmd, id event) {
+    _SOKOL_UNUSED(self); _SOKOL_UNUSED(cmd);
+    if (2 == [event buttonNumber]) {
+        _sapp_macos_mouse_event(SAPP_EVENTTYPE_MOUSE_DOWN, SAPP_MOUSEBUTTON_MIDDLE, _sapp_macos_mod([event modifierFlags]));
     }
 }
-- (void)otherMouseUp:(NSEvent*)event {
-    if (2 == event.buttonNumber) {
-        _sapp_macos_mouse_event(SAPP_EVENTTYPE_MOUSE_UP, SAPP_MOUSEBUTTON_MIDDLE, _sapp_macos_mod(event.modifierFlags));
+
+_SOKOL_PRIVATE void _sapp_oc_view_otherMouseUp(id self, SEL cmd, id event) {
+    _SOKOL_UNUSED(self); _SOKOL_UNUSED(cmd);
+    if (2 == [event buttonNumber]) {
+        _sapp_macos_mouse_event(SAPP_EVENTTYPE_MOUSE_UP, SAPP_MOUSEBUTTON_MIDDLE, _sapp_macos_mod([event modifierFlags]));
     }
 }
-- (void)mouseMoved:(NSEvent*)event {
-    _sapp_macos_mouse_event(SAPP_EVENTTYPE_MOUSE_MOVE, SAPP_MOUSEBUTTON_INVALID , _sapp_macos_mod(event.modifierFlags));
+
+_SOKOL_PRIVATE void _sapp_oc_view_mouseMoved(id self, SEL cmd, id event) {
+    _SOKOL_UNUSED(self); _SOKOL_UNUSED(cmd);
+    _sapp_macos_mouse_event(SAPP_EVENTTYPE_MOUSE_MOVE, SAPP_MOUSEBUTTON_INVALID , _sapp_macos_mod([event modifierFlags]));
 }
-- (void)mouseDragged:(NSEvent*)event {
-    _sapp_macos_mouse_event(SAPP_EVENTTYPE_MOUSE_MOVE, SAPP_MOUSEBUTTON_INVALID , _sapp_macos_mod(event.modifierFlags));
+
+_SOKOL_PRIVATE void _sapp_oc_view_mouseDragged(id self, SEL cmd, id event) {
+    _SOKOL_UNUSED(self); _SOKOL_UNUSED(cmd);
+    _sapp_macos_mouse_event(SAPP_EVENTTYPE_MOUSE_MOVE, SAPP_MOUSEBUTTON_INVALID , _sapp_macos_mod([event modifierFlags]));
 }
-- (void)rightMouseDragged:(NSEvent*)event {
-    _sapp_macos_mouse_event(SAPP_EVENTTYPE_MOUSE_MOVE, SAPP_MOUSEBUTTON_INVALID, _sapp_macos_mod(event.modifierFlags));
+
+_SOKOL_PRIVATE void _sapp_oc_view_rightMouseDragged(id self, SEL cmd, id event) {
+    _SOKOL_UNUSED(self); _SOKOL_UNUSED(cmd);
+    _sapp_macos_mouse_event(SAPP_EVENTTYPE_MOUSE_MOVE, SAPP_MOUSEBUTTON_INVALID, _sapp_macos_mod([event modifierFlags]));
 }
-- (void)scrollWheel:(NSEvent*)event {
+
+_SOKOL_PRIVATE void _sapp_oc_view_scrollWheel(id self, SEL cmd, id event) {
+    _SOKOL_UNUSED(self); _SOKOL_UNUSED(cmd);
     if (_sapp_events_enabled()) {
-        float dx = (float) event.scrollingDeltaX;
-        float dy = (float) event.scrollingDeltaY;
-        if (event.hasPreciseScrollingDeltas) {
+        float dx = (float) [event scrollingDeltaX];
+        float dy = (float) [event scrollingDeltaY];
+        if ([event hasPreciseScrollingDeltas]) {
             dx *= 0.1;
             dy *= 0.1;
         }
         if ((_sapp_absf(dx) > 0.0f) || (_sapp_absf(dy) > 0.0f)) {
             _sapp_init_event(SAPP_EVENTTYPE_MOUSE_SCROLL);
-            _sapp.event.modifiers = _sapp_macos_mod(event.modifierFlags);
+            _sapp.event.modifiers = _sapp_macos_mod([event modifierFlags]);
             _sapp.event.mouse_x = _sapp.mouse_x;
             _sapp.event.mouse_y = _sapp.mouse_y;
             _sapp.event.scroll_x = dx;
@@ -3002,19 +3181,21 @@ _SOKOL_PRIVATE void _sapp_oc_windlg_windowDidExitFullScreen(id self, SEL cmd, id
         }
     }
 }
-- (void)keyDown:(NSEvent*)event {
+
+_SOKOL_PRIVATE void _sapp_oc_view_keyDown(id self, SEL cmd, id event) {
+    _SOKOL_UNUSED(self); _SOKOL_UNUSED(cmd);
     if (_sapp_events_enabled()) {
-        const uint32_t mods = _sapp_macos_mod(event.modifierFlags);
+        const uint32_t mods = _sapp_macos_mod([event modifierFlags]);
         /* NOTE: macOS doesn't send keyUp events while the Cmd key is pressed,
             as a workaround, to prevent key presses from sticking we'll send
             a keyup event following right after the keydown if SUPER is also pressed
         */
-        const sapp_keycode key_code = _sapp_translate_key(event.keyCode);
-        _sapp_macos_key_event(SAPP_EVENTTYPE_KEY_DOWN, key_code, event.isARepeat, mods);
+        const sapp_keycode key_code = _sapp_translate_key([event keyCode]);
+        _sapp_macos_key_event(SAPP_EVENTTYPE_KEY_DOWN, key_code, [event isARepeat], mods);
         if (0 != (mods & SAPP_MODIFIER_SUPER)) {
-            _sapp_macos_key_event(SAPP_EVENTTYPE_KEY_UP, key_code, event.isARepeat, mods);
+            _sapp_macos_key_event(SAPP_EVENTTYPE_KEY_UP, key_code, [event isARepeat], mods);
         }
-        const NSString* chars = event.characters;
+        const NSString* chars = [event characters];
         const NSUInteger len = chars.length;
         if (len > 0) {
             _sapp_init_event(SAPP_EVENTTYPE_CHAR);
@@ -3025,7 +3206,7 @@ _SOKOL_PRIVATE void _sapp_oc_windlg_windowDidExitFullScreen(id self, SEL cmd, id
                     continue;
                 }
                 _sapp.event.char_code = codepoint;
-                _sapp.event.key_repeat = event.isARepeat;
+                _sapp.event.key_repeat = [event isARepeat];
                 _sapp_call_event(&_sapp.event);
             }
         }
@@ -3036,15 +3217,19 @@ _SOKOL_PRIVATE void _sapp_oc_windlg_windowDidExitFullScreen(id self, SEL cmd, id
         }
     }
 }
-- (void)keyUp:(NSEvent*)event {
+
+_SOKOL_PRIVATE void _sapp_oc_view_keyUp(id self, SEL cmd, id event) {
+    _SOKOL_UNUSED(self); _SOKOL_UNUSED(cmd);
     _sapp_macos_key_event(SAPP_EVENTTYPE_KEY_UP,
-        _sapp_translate_key(event.keyCode),
-        event.isARepeat,
-        _sapp_macos_mod(event.modifierFlags));
+        _sapp_translate_key([event keyCode]),
+        [event isARepeat],
+        _sapp_macos_mod([event modifierFlags]));
 }
-- (void)flagsChanged:(NSEvent*)event {
+
+_SOKOL_PRIVATE void _sapp_oc_view_flagsChanged(id self, SEL cmd, id event) {
+    _SOKOL_UNUSED(self); _SOKOL_UNUSED(cmd);
     const uint32_t old_f = _sapp.macos.flags_changed_store;
-    const uint32_t new_f = event.modifierFlags;
+    const uint32_t new_f = [event modifierFlags];
     _sapp.macos.flags_changed_store = new_f;
     sapp_keycode key_code = SAPP_KEYCODE_INVALID;
     bool down = false;
@@ -3068,16 +3253,16 @@ _SOKOL_PRIVATE void _sapp_oc_windlg_windowDidExitFullScreen(id self, SEL cmd, id
         _sapp_macos_key_event(down ? SAPP_EVENTTYPE_KEY_DOWN : SAPP_EVENTTYPE_KEY_UP,
             key_code,
             false,
-            _sapp_macos_mod(event.modifierFlags));
+            _sapp_macos_mod([event modifierFlags]));
     }
 }
-- (void)cursorUpdate:(NSEvent*)event {
-    _SOKOL_UNUSED(event);
+
+_SOKOL_PRIVATE void _sapp_oc_view_cursorUpdate(id self, SEL cmd, id event) {
+    _SOKOL_UNUSED(self); _SOKOL_UNUSED(cmd); _SOKOL_UNUSED(event);
     if (_sapp.desc.user_cursor) {
         _sapp_macos_app_event(SAPP_EVENTTYPE_UPDATE_CURSOR);
     }
 }
-@end
 
 void _sapp_macos_set_clipboard_string(const char* str) {
     @autoreleasepool {
