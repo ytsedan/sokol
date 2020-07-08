@@ -1079,6 +1079,10 @@ inline int sapp_run(const sapp_desc& desc) { return sapp_run(&desc); }
 
 /*== PLATFORM SPECIFIC INCLUDES AND DEFINES ==================================*/
 #if defined(_SAPP_APPLE)
+    #if defined(OBJC_OLD_DISPATCH_PROTOTYPES)
+        #undef OBJC_OLD_DISPATCH_PROTOTYPES
+        #define OBJC_OLD_DISPATCH_PROTOTYPES (0)
+    #endif
     #include <objc/objc-runtime.h>
     #include <CoreFoundation/CoreFoundation.h>
     #if defined(SOKOL_METAL)
@@ -1198,24 +1202,30 @@ inline int sapp_run(const sapp_desc& desc) { return sapp_run(&desc); }
 #if defined(_SAPP_MACOS)
 
 typedef struct {
+    SEL alloc;
+    SEL init;
+    SEL release;
+} _sapp_oc_nsobject_t;
+
+typedef struct {
     Class cls;
     SEL sharedApplication;
     SEL setActivationPolicy;
     SEL activateIgnoringOtherApps;
     SEL setDelegate;
     SEL run;
-} _sapp_objc_nsapp_t;
+} _sapp_oc_nsapp_t;
 
 typedef struct {
     Class cls;
     SEL stringWithUTF8String;
-} _sapp_objc_nsstring_t;
+} _sapp_oc_nsstring_t;
 
 typedef struct {
     Class cls;
     SEL mainScreen;
     SEL frame;
-} _sapp_objc_nsscreen_t;
+} _sapp_oc_nsscreen_t;
 
 typedef struct {
     Class cls;
@@ -1232,14 +1242,14 @@ typedef struct {
     SEL makeKeyAndOrderFront;
     SEL performClose;
     SEL mouseLocationOutsideOfEventStream;
-} _sapp_objc_nswindow_t;
+} _sapp_oc_nswindow_t;
 
 typedef struct {
     Class cls;
     SEL applicationDidFinishLaunching;
     SEL applicationShouldTerminateAfterLastWindowClosed;
     SEL applicationWillTerminate;
-} _sapp_objc_appdlg_t;
+} _sapp_oc_appdlg_t;
 
 typedef struct {
     Class cls;
@@ -1249,26 +1259,24 @@ typedef struct {
     SEL windowDidDeminiaturize;
     SEL windowDidEnterFullScreen;
     SEL windowDidExitFullScreen;
-} _sapp_objc_windlg_t;
+} _sapp_oc_windlg_t;
 
 typedef struct {
     Class cls;
     SEL drawInMTKView;
     SEL drawableSizeWillChange;
-} _sapp_objc_mtkviewdlg_t;
+} _sapp_oc_mtkviewdlg_t;
 
 typedef struct {
-    SEL alloc;
-    SEL init;
-    SEL release;
-    _sapp_objc_nsapp_t nsapp;
-    _sapp_objc_nsstring_t nsstring;
-    _sapp_objc_nsscreen_t nsscreen;
-    _sapp_objc_nswindow_t nswindow;
-    _sapp_objc_appdlg_t appdlg;
-    _sapp_objc_windlg_t windlg;
-    _sapp_objc_mtkviewdlg_t mtkviewdlg;
-} _sapp_objc_t;
+    _sapp_oc_nsobject_t nsobject;
+    _sapp_oc_nsapp_t nsapp;
+    _sapp_oc_nsstring_t nsstring;
+    _sapp_oc_nsscreen_t nsscreen;
+    _sapp_oc_nswindow_t nswindow;
+    _sapp_oc_appdlg_t appdlg;
+    _sapp_oc_windlg_t windlg;
+    _sapp_oc_mtkviewdlg_t mtkviewdlg;
+} _sapp_oc_t;
 
 @interface _sapp_macos_window_delegate : NSObject<NSWindowDelegate>
 @end
@@ -1296,7 +1304,6 @@ typedef struct {
         _sapp_macos_mtk_view_dlg* mtk_view_dlg;
         id<MTLDevice> mtl_device;
     #endif
-    _sapp_objc_t oc;
 } _sapp_macos_t;
 
 #endif // _SAPP_MACOS
@@ -1687,6 +1694,7 @@ typedef struct {
     char* clipboard;
     #if defined(_SAPP_MACOS)
         _sapp_macos_t macos;
+        _sapp_oc_t oc;
     #elif defined(_SAPP_IOS)
         _sapp_ios_t ios;
     #elif defined(_SAPP_EMSCRIPTEN)
@@ -2231,96 +2239,193 @@ _SOKOL_PRIVATE void _sapp_frame(void) {
 /*== MacOS/iOS ===============================================================*/
 #if defined(_SAPP_APPLE)
 
-#define _SAPP_OBJC_STRING(str) objc_msgSend((id)_sapp.macos.oc.nsstring.cls, _sapp.macos.oc.nsstring.stringWithUTF8String, str)
-#define _SAPP_OBJC_ALLOC_INIT(CLS) objc_msgSend(objc_msgSend((id)CLS, _sapp.macos.oc.alloc), _sapp.macos.oc.init)
-#define _SAPP_OBJC_ALLOC(CLS) objc_msgSend((id)CLS, _sapp.macos.oc.alloc)
-#define _SAPP_OBJC_MSGSEND objc_msgSend
-#define _SAPP_OBJC_MSGSEND_STRET_SMALL(TYPE) ((TYPE(*)(id, SEL))objc_msgSend)
-#define _SAPP_OBJC_MSGSEND_STRET(TYPE) ((TYPE(*)(id, SEL))objc_msgSend_stret)
-#define _SAPP_OBJC_RELEASE(obj) { if (nil != obj) { objc_msgSend(obj, _sapp.macos.oc.release); obj=nil; } }
-
 /*== MacOS ===================================================================*/
 #if defined(_SAPP_MACOS)
+
+#define _SAPP_OC_RELEASE(obj) { _sapp_oc_release(obj); obj=nil; }
 
 _SOKOL_PRIVATE void _sapp_macos_applicationDidFinishLaunching(id self, SEL cmd, id aNotification);
 _SOKOL_PRIVATE BOOL _sapp_macos_applicationShouldTerminateAfterLastWindowClosed(id self, SEL cmd, id sender);
 _SOKOL_PRIVATE void _sapp_macos_applicationWillTerminate(id self, SEL cmd, id aNotification);
 
 _SOKOL_PRIVATE void _sapp_macos_init_objc(void) {
-    _sapp.macos.oc.alloc = sel_getUid("alloc");
-    _sapp.macos.oc.init = sel_getUid("init");
-    _sapp.macos.oc.release = sel_getUid("release");
+
+    // NSObject
+    {
+        _sapp_oc_nsobject_t* meta = &_sapp.oc.nsobject;
+        meta->alloc = sel_getUid("alloc");
+        meta->init = sel_getUid("init");
+        meta->release = sel_getUid("release");
+    }
 
     // NSApplication
     {
-        _sapp_objc_nsapp_t* _app = &_sapp.macos.oc.nsapp;
-        _app->cls = objc_getClass("NSApplication");
-        _app->sharedApplication = sel_getUid("sharedApplication");
-        _app->setActivationPolicy = sel_getUid("setActivationPolicy:");
-        _app->activateIgnoringOtherApps = sel_getUid("activateIgnoringOtherApps:");
-        _app->setDelegate = sel_getUid("setDelegate:");
-        _app->run = sel_getUid("run");
+        _sapp_oc_nsapp_t* meta = &_sapp.oc.nsapp;
+        meta->cls = objc_getClass("NSApplication");
+        meta->sharedApplication = sel_getUid("sharedApplication");
+        meta->setActivationPolicy = sel_getUid("setActivationPolicy:");
+        meta->activateIgnoringOtherApps = sel_getUid("activateIgnoringOtherApps:");
+        meta->setDelegate = sel_getUid("setDelegate:");
+        meta->run = sel_getUid("run");
     }
 
     // NSString
     {
-        _sapp_objc_nsstring_t* _str = &_sapp.macos.oc.nsstring;
-        _str->cls = objc_getClass("NSString");
-        _str->stringWithUTF8String = sel_getUid("stringWithUTF8String:");
+        _sapp_oc_nsstring_t* meta = &_sapp.oc.nsstring;
+        meta->cls = objc_getClass("NSString");
+        meta->stringWithUTF8String = sel_getUid("stringWithUTF8String:");
     }
 
     // NSScreen
     {
-        _sapp_objc_nsscreen_t* screen = &_sapp.macos.oc.nsscreen;
-        screen->cls = objc_getClass("NSScreen");
-        screen->mainScreen = sel_getUid("mainScreen");
-        screen->frame = sel_getUid("frame");
+        _sapp_oc_nsscreen_t* meta = &_sapp.oc.nsscreen;
+        meta->cls = objc_getClass("NSScreen");
+        meta->mainScreen = sel_getUid("mainScreen");
+        meta->frame = sel_getUid("frame");
     }
 
     // NSWindow
     {
-        _sapp_objc_nswindow_t* win = &_sapp.macos.oc.nswindow;
-        win->cls = objc_getClass("NSWindow");
-        win->initWithContentRect = sel_getUid("initWithContentRect:styleMask:backing:defer:");
-        win->setReleasedWhenClosed = sel_getUid("setReleasedWhenClosed:");
-        win->setTitle = sel_getUid("setTitle:");
-        win->setAcceptsMouseMovedEvents = sel_getUid("setAcceptsMouseMovedEvents:");
-        win->setRestorable = sel_getUid("setRestorable:");
-        win->setDelegate = sel_getUid("setDelegate:");
-        win->setContentView = sel_getUid("setContentView:");
-        win->makeFirstResponder = sel_getUid("makeFirstResponder:");
-        win->toggleFullScreen = sel_getUid("toggleFullScreen:");
-        win->center = sel_getUid("center");
-        win->makeKeyAndOrderFront = sel_getUid("makeKeyAndOrderFront:");
-        win->performClose = sel_getUid("performClose:");
-        win->mouseLocationOutsideOfEventStream = sel_getUid("mouseLocationOutsideOfEventStream");
+        _sapp_oc_nswindow_t* meta = &_sapp.oc.nswindow;
+        meta->cls = objc_getClass("NSWindow");
+        meta->initWithContentRect = sel_getUid("initWithContentRect:styleMask:backing:defer:");
+        meta->setReleasedWhenClosed = sel_getUid("setReleasedWhenClosed:");
+        meta->setTitle = sel_getUid("setTitle:");
+        meta->setAcceptsMouseMovedEvents = sel_getUid("setAcceptsMouseMovedEvents:");
+        meta->setRestorable = sel_getUid("setRestorable:");
+        meta->setDelegate = sel_getUid("setDelegate:");
+        meta->setContentView = sel_getUid("setContentView:");
+        meta->makeFirstResponder = sel_getUid("makeFirstResponder:");
+        meta->toggleFullScreen = sel_getUid("toggleFullScreen:");
+        meta->center = sel_getUid("center");
+        meta->makeKeyAndOrderFront = sel_getUid("makeKeyAndOrderFront:");
+        meta->performClose = sel_getUid("performClose:");
+        meta->mouseLocationOutsideOfEventStream = sel_getUid("mouseLocationOutsideOfEventStream");
     }
 
     // setup the application delegate class
     {
-        _sapp_objc_appdlg_t* appdlg = &_sapp.macos.oc.appdlg;
-        appdlg->applicationDidFinishLaunching = sel_getUid("applicationDidFinishLaunching:");
-        appdlg->applicationShouldTerminateAfterLastWindowClosed = sel_getUid("applicationShouldTerminateAfterLastWindowClosed:");
-        appdlg->applicationWillTerminate = sel_getUid("applicationWillTerminate:");
-        appdlg->cls = objc_allocateClassPair(objc_getClass("NSObject"), "_sapp_macos_app_delegate", 0);
-        class_addMethod(appdlg->cls,
-                        appdlg->applicationDidFinishLaunching,
+        _sapp_oc_appdlg_t* meta = &_sapp.oc.appdlg;
+        meta->cls = objc_allocateClassPair(objc_getClass("NSObject"), "_sapp_macos_app_delegate", 0);
+        meta->applicationDidFinishLaunching = sel_getUid("applicationDidFinishLaunching:");
+        meta->applicationShouldTerminateAfterLastWindowClosed = sel_getUid("applicationShouldTerminateAfterLastWindowClosed:");
+        meta->applicationWillTerminate = sel_getUid("applicationWillTerminate:");
+        class_addMethod(meta->cls,
+                        meta->applicationDidFinishLaunching,
                         (IMP) _sapp_macos_applicationDidFinishLaunching,
                         "v@:@");
-        class_addMethod(appdlg->cls,
-                        appdlg->applicationShouldTerminateAfterLastWindowClosed,
+        class_addMethod(meta->cls,
+                        meta->applicationShouldTerminateAfterLastWindowClosed,
                         (IMP) _sapp_macos_applicationShouldTerminateAfterLastWindowClosed,
                         "i@:@");
-        class_addMethod(appdlg->cls,
-                        appdlg->applicationWillTerminate,
+        class_addMethod(meta->cls,
+                        meta->applicationWillTerminate,
                         (IMP) _sapp_macos_applicationWillTerminate,
                         "v@:@");
-        objc_registerClassPair(appdlg->cls);
+        objc_registerClassPair(meta->cls);
     }
 }
 
-_SOKOL_PRIVATE void _sapp_macos_discard_objc(void) {
-    objc_disposeClassPair(_sapp.macos.oc.appdlg.cls);
+static inline void _sapp_macos_discard_objc(void) {
+    objc_disposeClassPair(_sapp.oc.appdlg.cls);
+}
+
+static inline id _sapp_oc_alloc(Class cls) {
+    return ((id(*)(id,SEL))objc_msgSend)((id)cls, _sapp.oc.nsobject.alloc);
+}
+
+static inline id _sapp_oc_alloc_init(Class cls) {
+    return ((id(*)(id,SEL))objc_msgSend)(_sapp_oc_alloc(cls), _sapp.oc.nsobject.init);
+}
+
+static inline void _sapp_oc_release(id self) {
+    if (self) {
+        ((void(*)(id,SEL))objc_msgSend)(self, _sapp.oc.nsobject.release);
+    }
+}
+
+static inline id _sapp_oc_utf8string(const char* str) {
+    return ((id(*)(id,SEL,const char*))objc_msgSend)((id)_sapp.oc.nsstring.cls, _sapp.oc.nsstring.stringWithUTF8String, str);
+}
+
+static inline void _sapp_oc_nsapp_shared_application(void) {
+    ((void(*)(id,SEL))objc_msgSend)((id)_sapp.oc.nsapp.cls, _sapp.oc.nsapp.sharedApplication);
+}
+
+static inline void _sapp_oc_nsapp_set_activation_policy(NSApplicationActivationPolicy policy) {
+    ((void(*)(id,SEL,NSApplicationActivationPolicy))objc_msgSend)(NSApp, _sapp.oc.nsapp.setActivationPolicy, policy);
+}
+
+static inline void _sapp_oc_nsapp_set_activate_ignoring_other_apps(BOOL b) {
+    ((void(*)(id,SEL,BOOL))objc_msgSend)(NSApp, _sapp.oc.nsapp.activateIgnoringOtherApps, b);
+}
+
+static inline void _sapp_oc_nsapp_set_delegate(id dlg) {
+    ((void(*)(id,SEL,id))objc_msgSend)(NSApp, _sapp.oc.nsapp.setDelegate, dlg);
+}
+
+static inline void _sapp_oc_nsapp_run(void) {
+    ((void(*)(id,SEL))objc_msgSend)(NSApp, _sapp.oc.nsapp.run);
+}
+
+static inline id _sapp_oc_nsscreen_main_screen(void) {
+    return ((id(*)(id,SEL))objc_msgSend)((id)_sapp.oc.nsscreen.cls, _sapp.oc.nsscreen.mainScreen);
+}
+
+static inline NSRect _sapp_oc_nsscreen_frame(id self) {
+    return ((NSRect(*)(id,SEL))objc_msgSend_stret)(self, _sapp.oc.nsscreen.frame);
+}
+
+static inline id _sapp_oc_nswindow_init_with_content_rect(id self, NSRect rect, NSWindowStyleMask style, NSBackingStoreType backing, BOOL defer) {
+    return ((id(*)(id,SEL,NSRect,NSWindowStyleMask,NSBackingStoreType,BOOL))objc_msgSend)(self, _sapp.oc.nswindow.initWithContentRect, rect, style, backing, defer);
+}
+
+static inline void _sapp_oc_nswindow_set_released_when_closed(id self, BOOL b) {
+    ((void(*)(id,SEL,BOOL))objc_msgSend)(self, _sapp.oc.nswindow.setReleasedWhenClosed, b);
+}
+
+static inline void _sapp_oc_nswindow_set_title(id self, const char* t) {
+    ((void(*)(id,SEL,id))objc_msgSend)(self, _sapp.oc.nswindow.setTitle, _sapp_oc_utf8string(t));
+}
+
+static inline void _sapp_oc_nswindow_set_accepts_mouse_moved_events(id self, BOOL b) {
+    ((void(*)(id,SEL,BOOL))objc_msgSend)(self, _sapp.oc.nswindow.setAcceptsMouseMovedEvents, b);
+}
+
+static inline void _sapp_oc_nswindow_set_restorable(id self, BOOL b) {
+    ((void(*)(id,SEL,BOOL))objc_msgSend)(self, _sapp.oc.nswindow.setRestorable, b);
+}
+
+static inline void _sapp_oc_nswindow_set_delegate(id self, id dlg) {
+    ((void(*)(id,SEL,id))objc_msgSend)(self, _sapp.oc.nswindow.setDelegate, dlg);
+}
+
+static inline void _sapp_oc_nswindow_set_content_view(id self, id view) {
+    ((void(*)(id,SEL,id))objc_msgSend)(self, _sapp.oc.nswindow.setContentView, view);
+}
+
+static inline void _sapp_oc_nswindow_make_first_responder(id self, id view) {
+    ((void(*)(id,SEL,id))objc_msgSend)(self, _sapp.oc.nswindow.makeFirstResponder, view);
+}
+
+static inline void _sapp_oc_nswindow_toggle_fullscreen(id self, id sender) {
+    ((void(*)(id,SEL,id))objc_msgSend)(self, _sapp.oc.nswindow.toggleFullScreen, sender);
+}
+
+static inline void _sapp_oc_nswindow_center(id self) {
+    ((void(*)(id,SEL))objc_msgSend)(self, _sapp.oc.nswindow.center);
+}
+
+static inline void _sapp_oc_nswindow_make_key_and_order_front(id self, id sender) {
+    ((void(*)(id,SEL,id))objc_msgSend)(self, _sapp.oc.nswindow.makeKeyAndOrderFront, sender);
+}
+
+static inline NSPoint _sapp_oc_nswindow_mouse_location_outside_of_event_stream(id self) {
+    return ((NSPoint(*)(id,SEL))objc_msgSend)(self, _sapp.oc.nswindow.mouseLocationOutsideOfEventStream);
+}
+
+static inline void _sapp_oc_nswindow_perform_close(id self, id sender) {
+    ((void(*)(id,SEL,id))objc_msgSend)(self, _sapp.oc.nswindow.performClose, sender);
 }
 
 _SOKOL_PRIVATE void _sapp_macos_init_keytable(void) {
@@ -2439,15 +2544,15 @@ _SOKOL_PRIVATE void _sapp_macos_init_keytable(void) {
 
 _SOKOL_PRIVATE void _sapp_macos_discard_state(void) {
     // NOTE: it's safe to call [release] on a nil object
-    _SAPP_OBJC_RELEASE(_sapp.macos.tracking_area);
-    _SAPP_OBJC_RELEASE(_sapp.macos.app_dlg);
-    _SAPP_OBJC_RELEASE(_sapp.macos.win_dlg);
-    _SAPP_OBJC_RELEASE(_sapp.macos.view);
+    _SAPP_OC_RELEASE(_sapp.macos.tracking_area);
+    _SAPP_OC_RELEASE(_sapp.macos.app_dlg);
+    _SAPP_OC_RELEASE(_sapp.macos.win_dlg);
+    _SAPP_OC_RELEASE(_sapp.macos.view);
     #if defined(SOKOL_METAL)
-        _SAPP_OBJC_RELEASE(_sapp.macos.mtk_view_dlg);
-        _SAPP_OBJC_RELEASE(_sapp.macos.mtl_device);
+        _SAPP_OC_RELEASE(_sapp.macos.mtk_view_dlg);
+        _SAPP_OC_RELEASE(_sapp.macos.mtl_device);
     #endif
-    _SAPP_OBJC_RELEASE(_sapp.macos.window);
+    _SAPP_OC_RELEASE(_sapp.macos.window);
 
     _sapp_macos_discard_objc();
 }
@@ -2457,15 +2562,12 @@ _SOKOL_PRIVATE void _sapp_macos_run(const sapp_desc* desc) {
     _sapp_macos_init_objc();
     _sapp_macos_init_keytable();
 
-    const _sapp_objc_nsapp_t* _app = &_sapp.macos.oc.nsapp;
-    const _sapp_objc_appdlg_t* _dlg = &_sapp.macos.oc.appdlg;
-
-    _SAPP_OBJC_MSGSEND((id)_app->cls, _app->sharedApplication);
-    _SAPP_OBJC_MSGSEND(NSApp, _app->setActivationPolicy, NSApplicationActivationPolicyRegular);
-    _SAPP_OBJC_MSGSEND(NSApp, _app->activateIgnoringOtherApps, YES);
-    _sapp.macos.app_dlg = _SAPP_OBJC_ALLOC_INIT(_dlg->cls);
-    _SAPP_OBJC_MSGSEND(NSApp, _app->setDelegate, _sapp.macos.app_dlg);
-    _SAPP_OBJC_MSGSEND(NSApp, _app->run);
+    _sapp_oc_nsapp_shared_application();
+    _sapp_oc_nsapp_set_activation_policy(NSApplicationActivationPolicyRegular);
+    _sapp_oc_nsapp_set_activate_ignoring_other_apps(YES);
+    _sapp.macos.app_dlg = _sapp_oc_alloc_init(_sapp.oc.appdlg.cls);
+    _sapp_oc_nsapp_set_delegate(_sapp.macos.app_dlg);
+    _sapp_oc_nsapp_run();
 
     // NOTE: [NSApp run] never returns, instead cleanup code
     // must be put into applicationWillTerminate
@@ -2509,13 +2611,12 @@ _SOKOL_PRIVATE void _sapp_macos_update_dimensions(void) {
 }
 
 void _sapp_macos_frame(void) {
-    _sapp_objc_nswindow_t* _win = &_sapp.macos.oc.nswindow;
-    const NSPoint mouse_pos = _SAPP_OBJC_MSGSEND_STRET_SMALL(const NSPoint)(_sapp.macos.window, _win->mouseLocationOutsideOfEventStream);
+    const NSPoint mouse_pos = _sapp_oc_nswindow_mouse_location_outside_of_event_stream(_sapp.macos.window);
     _sapp.mouse_x = mouse_pos.x * _sapp.dpi_scale;
     _sapp.mouse_y = _sapp.framebuffer_height - (mouse_pos.y * _sapp.dpi_scale) - 1;
     _sapp_frame();
     if (_sapp.quit_requested || _sapp.quit_ordered) {
-        _SAPP_OBJC_MSGSEND(_sapp.macos.window, _win->performClose, nil);
+        _sapp_oc_nswindow_perform_close(_sapp.macos.window, nil);
     }
 }
 
@@ -2525,7 +2626,7 @@ _SOKOL_PRIVATE void _sapp_macos_toggle_fullscreen(void) {
        event handlers
     */
     _sapp.fullscreen = !_sapp.fullscreen;
-    _SAPP_OBJC_MSGSEND(_sapp.macos.window, _sapp.macos.oc.nswindow.toggleFullScreen, nil);
+    _sapp_oc_nswindow_toggle_fullscreen(_sapp.macos.window, nil);
 }
 
 _SOKOL_PRIVATE void _sapp_macos_applicationDidFinishLaunching(id self, SEL cmd, id notification) {
@@ -2533,9 +2634,7 @@ _SOKOL_PRIVATE void _sapp_macos_applicationDidFinishLaunching(id self, SEL cmd, 
     _SOKOL_UNUSED(cmd);
     _SOKOL_UNUSED(notification);
     if (_sapp.fullscreen) {
-        const _sapp_objc_nsscreen_t* _scr = &_sapp.macos.oc.nsscreen;
-        id main_screen = _SAPP_OBJC_MSGSEND((id)_scr->cls, _scr->mainScreen);
-        NSRect screen_rect = _SAPP_OBJC_MSGSEND_STRET(NSRect)(main_screen, _scr->frame);
+        NSRect screen_rect = _sapp_oc_nsscreen_frame(_sapp_oc_nsscreen_main_screen());
         _sapp.window_width = screen_rect.size.width;
         _sapp.window_height = screen_rect.size.height;
         if (_sapp.desc.high_dpi) {
@@ -2554,20 +2653,15 @@ _SOKOL_PRIVATE void _sapp_macos_applicationDidFinishLaunching(id self, SEL cmd, 
         NSWindowStyleMaskMiniaturizable |
         NSWindowStyleMaskResizable;
     NSRect window_rect = NSMakeRect(0, 0, _sapp.window_width, _sapp.window_height);
-    _sapp_objc_nswindow_t* _win = &_sapp.macos.oc.nswindow;
-    _sapp.macos.window = _SAPP_OBJC_ALLOC(_win->cls);
-    _SAPP_OBJC_MSGSEND(_sapp.macos.window, _win->initWithContentRect,
-        window_rect,
-        style,
-        NSBackingStoreBuffered,
-        NO);
-    _SAPP_OBJC_MSGSEND(_sapp.macos.window, _win->setReleasedWhenClosed, NO); // this is necessary for proper cleanup in applicationWillTerminate
-    _SAPP_OBJC_MSGSEND(_sapp.macos.window, _win->setTitle, _SAPP_OBJC_STRING(_sapp.window_title));
-    _SAPP_OBJC_MSGSEND(_sapp.macos.window, _win->setAcceptsMouseMovedEvents, YES);
-    _SAPP_OBJC_MSGSEND(_sapp.macos.window, _win->setRestorable, YES);
-
+    _sapp.macos.window = _sapp_oc_alloc(_sapp.oc.nswindow.cls);
+    _sapp_oc_nswindow_init_with_content_rect(_sapp.macos.window, window_rect, style, NSBackingStoreBuffered, NO);
+    _sapp_oc_nswindow_set_released_when_closed(_sapp.macos.window, NO);
+    _sapp_oc_nswindow_set_title(_sapp.macos.window, _sapp.window_title);
+    _sapp_oc_nswindow_set_accepts_mouse_moved_events(_sapp.macos.window, YES);
+    _sapp_oc_nswindow_set_restorable(_sapp.macos.window, YES);
     _sapp.macos.win_dlg = [[_sapp_macos_window_delegate alloc] init];
-    _SAPP_OBJC_MSGSEND(_sapp.macos.window, _win->setDelegate, _sapp.macos.win_dlg);
+    _sapp_oc_nswindow_set_delegate(_sapp.macos.window, _sapp.macos.win_dlg);
+
     #if defined(SOKOL_METAL)
         _sapp.macos.mtl_device = MTLCreateSystemDefaultDevice();
         _sapp.macos.mtk_view_dlg = [[_sapp_macos_mtk_view_dlg alloc] init];
@@ -2579,8 +2673,8 @@ _SOKOL_PRIVATE void _sapp_macos_applicationDidFinishLaunching(id self, SEL cmd, 
         _sapp.macos.view.colorPixelFormat = MTLPixelFormatBGRA8Unorm;
         _sapp.macos.view.depthStencilPixelFormat = MTLPixelFormatDepth32Float_Stencil8;
         _sapp.macos.view.sampleCount = _sapp.sample_count;
-        _SAPP_OBJC_MSGSEND(_sapp.macos.window, _win->setContentView, _sapp.macos.view);
-        _SAPP_OBJC_MSGSEND(_sapp.macos.window, _win->makeFirstResponder, _sapp.macos.view);
+        _sapp_oc_nswindow_set_content_view(_sapp.macos.window, _sapp.macos.view);
+        _sapp_oc_nswindow_make_first_responder(_sapp.macos.window, _sapp.macos.view);
         if (!_sapp.desc.high_dpi) {
             CGSize drawable_size = { (CGFloat) _sapp.framebuffer_width, (CGFloat) _sapp.framebuffer_height };
             _sapp.macos.view.drawableSize = drawable_size;
@@ -2634,12 +2728,12 @@ _SOKOL_PRIVATE void _sapp_macos_applicationDidFinishLaunching(id self, SEL cmd, 
     _sapp.valid = true;
     if (_sapp.fullscreen) {
         /* on GL, this already toggles a rendered frame, so set the valid flag before */
-        _SAPP_OBJC_MSGSEND(_sapp.macos.window, _win->toggleFullScreen, self);
+        _sapp_oc_nswindow_toggle_fullscreen(_sapp.macos.window, self);
     }
     else {
-        _SAPP_OBJC_MSGSEND(_sapp.macos.window, _win->center);
+        _sapp_oc_nswindow_center(_sapp.macos.window);
     }
-    _SAPP_OBJC_MSGSEND(_sapp.macos.window, _win->makeKeyAndOrderFront, nil);
+    _sapp_oc_nswindow_make_key_and_order_front(_sapp.macos.window, nil);
     _sapp_macos_update_dimensions();
 }
 
@@ -2817,7 +2911,7 @@ _SOKOL_PRIVATE void _sapp_macos_app_event(sapp_event_type type) {
 - (void)updateTrackingAreas {
     if (_sapp.macos.tracking_area != nil) {
         [self removeTrackingArea:_sapp.macos.tracking_area];
-        _SAPP_OBJC_RELEASE(_sapp.macos.tracking_area);
+        _SAPP_OC_RELEASE(_sapp.macos.tracking_area);
     }
     const NSTrackingAreaOptions options = NSTrackingMouseEnteredAndExited |
                                           NSTrackingActiveInKeyWindow |
