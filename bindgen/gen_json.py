@@ -1,6 +1,6 @@
 #-------------------------------------------------------------------------------
-#   gen_json.py 
-#   
+#   gen_json.py
+#
 #   Convert clang AST dump into a simplfied JSON API description.
 #-------------------------------------------------------------------------------
 import json
@@ -18,12 +18,13 @@ def parse_struct(decl):
     outp['name'] = decl['name']
     outp['items'] = []
     for item_decl in decl['inner']:
-        if item_decl['kind'] == 'FieldDecl':
-            item = {}
-            if 'name' in item_decl:
-                item['name'] = item_decl['name']
-            item['type'] = item_decl['type']['qualType']
-            outp['items'].append(item)
+        if item_decl['kind'] != 'FieldDecl':
+            sys.exit(f"ERROR: Structs must only contain simple fields ({decl['name']})")
+        item = {}
+        if 'name' in item_decl:
+            item['name'] = item_decl['name']
+        item['type'] = item_decl['type']['qualType']
+        outp['items'].append(item)
     return outp
 
 def parse_enum(decl):
@@ -35,6 +36,15 @@ def parse_enum(decl):
         if item_decl['kind'] == 'EnumConstantDecl':
             item = {}
             item['name'] = item_decl['name']
+            if 'inner' in item_decl:
+                const_expr = item_decl['inner'][0]
+                if const_expr['kind'] != 'ConstantExpr':
+                    sys.exit(f"ERROR: Enum values must be a ConstantExpr ({decl['name']})")
+                if const_expr['valueCategory'] != 'rvalue':
+                    sys.exit(f"ERROR: Enum value ConstantExpr must be 'rvalue' ({decl['name']})")
+                if not ((len(const_expr['inner']) == 1) and (const_expr['inner'][0]['kind'] == 'IntegerLiteral')):
+                    sys.exit(f"ERROR: Enum value ConstantExpr must have exactly one IntegerLiteral ({decl['name']})")
+                item['value'] = const_expr['inner'][0]['value']
         outp['items'].append(item)
     return outp
 
