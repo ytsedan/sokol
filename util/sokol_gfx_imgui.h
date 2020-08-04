@@ -2996,7 +2996,7 @@ _SOKOL_PRIVATE void _sg_imgui_draw_attachment(sg_imgui_t* ctx, const sg_attachme
         _sg_imgui_show_image(ctx, att->image);
     }
     igText("  Mip Level: %d", att->mip_level);
-    igText("  Face/Layer/Slice: %d", att->layer);
+    igText("  Face/Layer/Slice: %d", att->face_layer_slice);
     _sg_imgui_draw_embedded_image(ctx, att->image, img_scale);
 }
 

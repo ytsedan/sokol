@@ -1868,11 +1868,7 @@ typedef struct sg_pipeline_desc {
 typedef struct sg_attachment_desc {
     sg_image image;
     int mip_level;
-    union {
-        int face;
-        int layer;
-        int slice;
-    };
+    int face_layer_slice; /* cubemap face or array texture layer or 3D texture slice */
 } sg_attachment_desc;
 
 typedef struct sg_pass_desc {
@@ -2737,7 +2733,7 @@ _SOKOL_PRIVATE void _sg_pass_common_init(_sg_pass_common_t* cmn, const sg_pass_d
             att = &cmn->color_atts[i];
             att->image_id = att_desc->image;
             att->mip_level = att_desc->mip_level;
-            att->slice = att_desc->slice;
+            att->slice = att_desc->face_layer_slice;
         }
     }
     att_desc = &desc->depth_stencil_attachment;
@@ -2745,7 +2741,7 @@ _SOKOL_PRIVATE void _sg_pass_common_init(_sg_pass_common_t* cmn, const sg_pass_d
         att = &cmn->ds_att;
         att->image_id = att_desc->image;
         att->mip_level = att_desc->mip_level;
-        att->slice = att_desc->slice;
+        att->slice = att_desc->face_layer_slice;
     }
 }
 
@@ -12788,13 +12784,13 @@ _SOKOL_PRIVATE bool _sg_validate_pass_desc(const sg_pass_desc* desc) {
             SOKOL_VALIDATE(img && img->slot.state == SG_RESOURCESTATE_VALID, _SG_VALIDATE_PASSDESC_IMAGE);
             SOKOL_VALIDATE(att->mip_level < img->cmn.num_mipmaps, _SG_VALIDATE_PASSDESC_MIPLEVEL);
             if (img->cmn.type == SG_IMAGETYPE_CUBE) {
-                SOKOL_VALIDATE(att->face < 6, _SG_VALIDATE_PASSDESC_FACE);
+                SOKOL_VALIDATE(att->face_layer_slice < 6, _SG_VALIDATE_PASSDESC_FACE);
             }
             else if (img->cmn.type == SG_IMAGETYPE_ARRAY) {
-                SOKOL_VALIDATE(att->layer < img->cmn.num_layers, _SG_VALIDATE_PASSDESC_LAYER);
+                SOKOL_VALIDATE(att->face_layer_slice < img->cmn.num_layers, _SG_VALIDATE_PASSDESC_LAYER);
             }
             else if (img->cmn.type == SG_IMAGETYPE_3D) {
-                SOKOL_VALIDATE(att->slice < img->cmn.depth, _SG_VALIDATE_PASSDESC_SLICE);
+                SOKOL_VALIDATE(att->face_layer_slice < img->cmn.depth, _SG_VALIDATE_PASSDESC_SLICE);
             }
             SOKOL_VALIDATE(img->cmn.render_target, _SG_VALIDATE_PASSDESC_IMAGE_NO_RT);
             if (att_index == 0) {
@@ -12817,13 +12813,13 @@ _SOKOL_PRIVATE bool _sg_validate_pass_desc(const sg_pass_desc* desc) {
             SOKOL_VALIDATE(img && img->slot.state == SG_RESOURCESTATE_VALID, _SG_VALIDATE_PASSDESC_IMAGE);
             SOKOL_VALIDATE(att->mip_level < img->cmn.num_mipmaps, _SG_VALIDATE_PASSDESC_MIPLEVEL);
             if (img->cmn.type == SG_IMAGETYPE_CUBE) {
-                SOKOL_VALIDATE(att->face < 6, _SG_VALIDATE_PASSDESC_FACE);
+                SOKOL_VALIDATE(att->face_layer_slice < 6, _SG_VALIDATE_PASSDESC_FACE);
             }
             else if (img->cmn.type == SG_IMAGETYPE_ARRAY) {
-                SOKOL_VALIDATE(att->layer < img->cmn.num_layers, _SG_VALIDATE_PASSDESC_LAYER);
+                SOKOL_VALIDATE(att->face_layer_slice < img->cmn.num_layers, _SG_VALIDATE_PASSDESC_LAYER);
             }
             else if (img->cmn.type == SG_IMAGETYPE_3D) {
-                SOKOL_VALIDATE(att->slice < img->cmn.depth, _SG_VALIDATE_PASSDESC_SLICE);
+                SOKOL_VALIDATE(att->face_layer_slice < img->cmn.depth, _SG_VALIDATE_PASSDESC_SLICE);
             }
             SOKOL_VALIDATE(img->cmn.render_target, _SG_VALIDATE_PASSDESC_IMAGE_NO_RT);
             SOKOL_VALIDATE(width == img->cmn.width >> att->mip_level, _SG_VALIDATE_PASSDESC_IMAGE_SIZES);
