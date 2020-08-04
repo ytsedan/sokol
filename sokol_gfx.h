@@ -1327,11 +1327,11 @@ typedef enum sg_blend_op {
 */
 typedef enum sg_color_mask {
     _SG_COLORMASK_DEFAULT = 0,      /* value 0 reserved for default-init */
-    SG_COLORMASK_NONE = (0x10),     /* special value for 'all channels disabled */
-    SG_COLORMASK_R = (1<<0),
-    SG_COLORMASK_G = (1<<1),
-    SG_COLORMASK_B = (1<<2),
-    SG_COLORMASK_A = (1<<3),
+    SG_COLORMASK_NONE = 0x10,     /* special value for 'all channels disabled */
+    SG_COLORMASK_R = 0x1,
+    SG_COLORMASK_G = 0x2,
+    SG_COLORMASK_B = 0x4,
+    SG_COLORMASK_A = 0x8,
     SG_COLORMASK_RGB = 0x7,
     SG_COLORMASK_RGBA = 0xF,
     _SG_COLORMASK_FORCE_U32 = 0x7FFFFFFF
