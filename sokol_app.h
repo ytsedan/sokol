@@ -891,17 +891,17 @@ typedef struct sapp_touchpoint {
 } sapp_touchpoint;
 
 typedef enum sapp_mousebutton {
-    SAPP_MOUSEBUTTON_INVALID = -1,
     SAPP_MOUSEBUTTON_LEFT = 0,
     SAPP_MOUSEBUTTON_RIGHT = 1,
     SAPP_MOUSEBUTTON_MIDDLE = 2,
+    SAPP_MOUSEBUTTON_INVALID = 0x100
 } sapp_mousebutton;
 
 enum {
-    SAPP_MODIFIER_SHIFT = (1<<0),
-    SAPP_MODIFIER_CTRL = (1<<1),
-    SAPP_MODIFIER_ALT = (1<<2),
-    SAPP_MODIFIER_SUPER = (1<<3)
+    SAPP_MODIFIER_SHIFT = 0x1,
+    SAPP_MODIFIER_CTRL = 0x2,
+    SAPP_MODIFIER_ALT = 0x4,
+    SAPP_MODIFIER_SUPER = 0x8
 };
 
 typedef struct sapp_event {
