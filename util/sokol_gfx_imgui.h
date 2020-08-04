@@ -2733,6 +2733,7 @@ _SOKOL_PRIVATE void _sg_imgui_draw_image_panel(sg_imgui_t* ctx, sg_image img) {
             igText("Width:             %d", desc->width);
             igText("Height:            %d", desc->height);
             igText("Depth:             %d", desc->depth);
+            igText("Num Layers:        %d", desc->num_layers);
             igText("Num Mipmaps:       %d", desc->num_mipmaps);
             igText("Pixel Format:      %s", _sg_imgui_pixelformat_string(desc->pixel_format));
             igText("Sample Count:      %d", desc->sample_count);
