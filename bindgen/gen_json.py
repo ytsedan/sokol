@@ -1,7 +1,9 @@
 #-------------------------------------------------------------------------------
-#   gen_json.py
+#   Read an AST file generated with:
 #
-#   Convert clang AST dump into a simplfied JSON API description.
+#   clang -Xclang -ast-dump=json header.h >header.ast.sjon
+#
+#   ...and generate a simplified JSON file with the public API declaration.
 #-------------------------------------------------------------------------------
 import json
 import sys
@@ -100,15 +102,7 @@ def parse_ast(ast, module, prefix):
                 outp['decls'].append(outp_decl)
     return outp
 
-#-------------------------------------------------------------------------------
-#   Read an AST file generated with:
-#
-#   clang -Xclang -ast-dump=json header.h >header.ast.sjon
-#
-#   ...and generate a simplified JSON file with the public API declaration.
-#
 def gen_json(input_path, output_path, module_name, prefix):
-
     try:
         print(f">>> {input_path} => {output_path}")
         with open(input_path, 'r') as f_inp:
