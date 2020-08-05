@@ -11,6 +11,7 @@ import re
 
 struct_types = []
 enum_types = []
+enum_items = {}
 
 re_1d_array = re.compile("^\w*\s\[\d*\]$")
 re_2d_array = re.compile("^\w*\s\[\d*\]\[\d*\]$")
@@ -72,7 +73,12 @@ def enum_item_name(s):
         outp = outp[1:]
     parts = outp.split('_')[2:]
     outp = '_'.join(parts)
+    if outp[0].isdigit():
+        outp = '_' + outp
     return outp
+
+def enum_default_item(enum_name):
+    return enum_items[enum_name][0]
 
 def is_prim_type(s):
     return s in prim_types
@@ -82,6 +88,9 @@ def is_struct_type(s):
 
 def is_enum_type(s):
     return s in enum_types
+
+def is_string_ptr(s):
+    return s == "const char *"
 
 def is_1d_array_type(s):
     return re_1d_array.match(s)
@@ -103,9 +112,11 @@ def gen_struct(decl, prefix):
         if is_prim_type(field_type):
             l(f"    {field_name}: {as_zig_type(field_type)} = {type_default_value(field_type)},")
         elif is_struct_type(field_type):
-            l(f"    {field_name}: {type_name(field_type)},")
+            l(f"    {field_name}: {type_name(field_type)} = .{{ }},")
         elif is_enum_type(field_type):
-            l(f"    {field_name}: {type_name(field_type)} = 0,")
+            l(f"    {field_name}: {type_name(field_type)} = .{enum_default_item(field_type)},")
+        elif is_string_ptr(field_type):
+            l(f"    {field_name}: ?[*:0]const u8 = null,")
         else:
             l(f"//  {field_name}: {field_type};")
     l("};")
@@ -137,7 +148,11 @@ def gen_module(inp):
         if kind == 'struct':
             struct_types.append(decl['name'])
         elif kind == 'enum':
-            enum_types.append(decl['name'])
+            enum_name = decl['name']
+            enum_types.append(enum_name)
+            enum_items[enum_name] = []
+            for item in decl['items']:
+                enum_items[enum_name].append(enum_item_name(item['name']))
     prefix = inp['prefix']
     for decl in inp['decls']:
         kind = decl['kind']
