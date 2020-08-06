@@ -10,6 +10,7 @@ import json
 import re
 
 struct_types = []
+c_struct_types = []     # structs that have a C compatible memory layout
 enum_types = []
 enum_items = {}
 
@@ -52,14 +53,17 @@ def l(s):
     out_lines += s + '\n'
 
 # PREFIX_BLA_BLUB to bla_blub
-def const_name(s, prefix):
+def as_const_name(s, prefix):
     outp = s.lower()
     if outp.startswith(prefix):
         outp = outp[len(prefix):]
     return outp
 
+def as_zig_prim_type(s):
+    return prim_types[s]
+
 # prefix_bla_blub => BlaBlub
-def type_name(s):
+def as_zig_type(s):
     parts = s.lower().split('_')[1:]
     outp = ''
     for part in parts:
@@ -67,7 +71,7 @@ def type_name(s):
     return outp
 
 # PREFIX_ENUM_BLA => Bla, _PREFIX_ENUM_BLA => Bla
-def enum_item_name(s):
+def as_enum_item_name(s):
     outp = s
     if outp.startswith('_'):
         outp = outp[1:]
@@ -98,37 +102,71 @@ def is_1d_array_type(s):
 def is_2d_array_type(s):
     return re_2d_array.match(s)
 
-def as_zig_type(s):
-    return prim_types[s]
-
 def type_default_value(s):
     return prim_defaults[s]
 
+def extract_array_type(s):
+    return s[:s.index('[')].strip()
+
+def extract_1d_array_num(s):
+    return s[s.index('['):].strip('[]').strip()
+
+# test if a struct has a C compatible memory layout
+def struct_is_c_compatible(decl):
+    c_comp = True;
+    for field in decl['fields']:
+        field_type = field['type']
+        if is_struct_type(field_type):
+            if field_type not in c_struct_types:
+                c_comp = False
+        # FIXME
+    print(f"{decl['name']} C compatible: {c_comp}")
+    return c_comp
+
 def gen_struct(decl, prefix):
-    l(f"pub const {type_name(decl['name'])} = extern struct {{")
+    if decl['name'] in c_struct_types:
+        l(f"pub const {as_zig_type(decl['name'])} = extern struct {{")
+    else:
+        l(f"pub const {as_zig_type(decl['name'])} = struct {{")
     for field in decl['fields']:
         field_name = field['name']
         field_type = field['type']
         if is_prim_type(field_type):
-            l(f"    {field_name}: {as_zig_type(field_type)} = {type_default_value(field_type)},")
+            l(f"    {field_name}: {as_zig_prim_type(field_type)} = {type_default_value(field_type)},")
         elif is_struct_type(field_type):
-            l(f"    {field_name}: {type_name(field_type)} = .{{ }},")
+            l(f"    {field_name}: {as_zig_type(field_type)} = .{{ }},")
         elif is_enum_type(field_type):
-            l(f"    {field_name}: {type_name(field_type)} = .{enum_default_item(field_type)},")
+            l(f"    {field_name}: {as_zig_type(field_type)} = .{enum_default_item(field_type)},")
         elif is_string_ptr(field_type):
             l(f"    {field_name}: ?[*:0]const u8 = null,")
+        elif is_1d_array_type(field_type):
+            array_type = extract_array_type(field_type)
+            array_num  = extract_1d_array_num(field_type)
+            if is_prim_type(array_type):
+                zig_type = as_zig_prim_type(array_type)
+                t0 = f"[{array_num}]{zig_type}"
+                t1 = f"[_]{zig_type}"
+                def_val = type_default_value(array_type)
+                l(f"    {field_name}: {t0} = {t1}{{{def_val}}} ** {array_num},")
+            elif is_struct_type(array_type):
+                zig_type = as_zig_type(array_type)
+                t0 = f"[{array_num}]{zig_type}"
+                t1 = f"[_]{zig_type}"
+                l(f"    {field_name}: {t0} = {t1}{{ .{{ }} }} ** {array_num},")
+            else:
+                l(f"//    FIXME: ??? array {field_name}: {field_type} => {array_type} [{array_num}]")
         else:
             l(f"//  {field_name}: {field_type};")
     l("};")
 
 def gen_consts(decl, prefix):
     for item in decl['items']:
-        l(f"pub const {const_name(item['name'], prefix)} = {item['value']};")
+        l(f"pub const {as_const_name(item['name'], prefix)} = {item['value']};")
 
 def gen_enum(decl, prefix):
-    l(f"pub const {type_name(decl['name'])} = extern enum(i32) {{")
+    l(f"pub const {as_zig_type(decl['name'])} = extern enum(i32) {{")
     for item in decl['items']:
-        item_name = enum_item_name(item['name'])
+        item_name = as_enum_item_name(item['name'])
         if item_name != "FORCE_U32":
             if 'value' in item:
                 l(f"    {item_name} = {item['value']},")
@@ -139,6 +177,26 @@ def gen_enum(decl, prefix):
 def gen_func(decl, prefix):
     pass
 
+def gen_helper_funcs(inp):
+    if inp['module'] == 'sokol_gfx':
+        l('pub fn ColorAttachmentActions(actions: anytype) [max_color_attachments]ColorAttachmentAction {')
+        # FIXME: needs more compile-time error checking to make sure the incoming struct
+        # is ColorAttachmentAction compatible (1 or 2 fields named 'action' and 'val')
+        l('    var res: [max_color_attachments]ColorAttachmentAction = [_]ColorAttachmentAction { .{ } } ** max_color_attachments;')
+        l('    inline for (actions) |action, i| {')
+        l('        if (@hasField(@TypeOf(action), "action")) {')
+        l('            res[i].action = action.action;')
+        l('        }')
+        l('        if (@hasField(@TypeOf(action), "val")) {')
+        l('            res[i].val[0] = action.val[0];')
+        l('            res[i].val[1] = action.val[1];')
+        l('            res[i].val[2] = action.val[2];')
+        l('            res[i].val[3] = action.val[3];')
+        l('        }')
+        l('    }')
+        l('    return res;')
+        l('}')
+
 def gen_module(inp):
     l('// machine generated, do not edit')
     global struct_types
@@ -147,12 +205,14 @@ def gen_module(inp):
         kind = decl['kind']
         if kind == 'struct':
             struct_types.append(decl['name'])
+            if struct_is_c_compatible(decl):
+                c_struct_types.append(decl['name'])
         elif kind == 'enum':
             enum_name = decl['name']
             enum_types.append(enum_name)
             enum_items[enum_name] = []
             for item in decl['items']:
-                enum_items[enum_name].append(enum_item_name(item['name']))
+                enum_items[enum_name].append(as_enum_item_name(item['name']))
     prefix = inp['prefix']
     for decl in inp['decls']:
         kind = decl['kind']
@@ -164,6 +224,7 @@ def gen_module(inp):
             gen_enum(decl, prefix)
         elif kind == 'func':
             gen_func(decl, prefix)
+    gen_helper_funcs(inp)
 
 def gen_zig(input_path, output_path):
     try:
