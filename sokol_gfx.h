@@ -2097,7 +2097,7 @@ typedef struct sg_gl_context_desc {
     bool force_gles2;
 } sg_gl_context_desc;
 
-typedef struct sg_mtl_context_desc {
+typedef struct sg_metal_context_desc {
     const void* device;
     const void* (*renderpass_descriptor_cb)(void);
     const void* (*drawable_cb)(void);
