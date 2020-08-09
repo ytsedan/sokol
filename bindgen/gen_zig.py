@@ -108,8 +108,8 @@ def type_default_value(s):
 def extract_array_type(s):
     return s[:s.index('[')].strip()
 
-def extract_1d_array_num(s):
-    return s[s.index('['):].strip('[]').strip()
+def extract_array_nums(s):
+    return s[s.index('['):].replace('[', ' ').replace(']', ' ').split()
 
 # test if a struct has a C compatible memory layout
 def struct_is_c_compatible(decl):
@@ -143,20 +143,29 @@ def gen_struct(decl, prefix):
             l(f"    {field_name}: ?[*:0]const u8 = null,")
         elif is_1d_array_type(field_type):
             array_type = extract_array_type(field_type)
-            array_num  = extract_1d_array_num(field_type)
+            array_nums = extract_array_nums(field_type)
             if is_prim_type(array_type):
                 zig_type = as_zig_prim_type(array_type)
-                t0 = f"[{array_num}]{zig_type}"
+                t0 = f"[{array_nums[0]}]{zig_type}"
                 t1 = f"[_]{zig_type}"
                 def_val = type_default_value(array_type)
-                l(f"    {field_name}: {t0} = {t1}{{{def_val}}} ** {array_num},")
+                l(f"    {field_name}: {t0} = {t1}{{{def_val}}} ** {array_nums[0]},")
             elif is_struct_type(array_type):
                 zig_type = as_zig_type(array_type)
-                t0 = f"[{array_num}]{zig_type}"
+                t0 = f"[{array_nums[0]}]{zig_type}"
                 t1 = f"[_]{zig_type}"
-                l(f"    {field_name}: {t0} = {t1}{{ .{{ }} }} ** {array_num},")
+                l(f"    {field_name}: {t0} = {t1}{{ .{{ }} }} ** {array_nums[0]},")
             else:
                 l(f"//    FIXME: ??? array {field_name}: {field_type} => {array_type} [{array_num}]")
+        elif is_2d_array_type(field_type):
+            array_type = extract_array_type(field_type)
+            array_nums = extract_array_nums(field_type)
+            if is_prim_type(array_type):
+                l(f"// FIXME: 2D array with primitive type: {field_name}")
+            elif is_struct_type(array_type):
+                zig_type = as_zig_type(array_type)
+                t0 = f"[{array_nums[0]}][{array_nums[1]}]{zig_type}"
+                l(f"    {field_name}: {t0} = [_][{array_nums[1]}]{zig_type}{{[_]{zig_type}{{ .{{ }} }}**{array_nums[1]}}}**{array_nums[0]},")
         else:
             l(f"//  {field_name}: {field_type};")
     l("};")
