@@ -124,10 +124,12 @@ def struct_is_c_compatible(decl):
     return c_comp
 
 def gen_struct(decl, prefix):
+    zig_type = as_zig_type(decl['name'])
     if decl['name'] in c_struct_types:
-        l(f"pub const {as_zig_type(decl['name'])} = extern struct {{")
+        l(f"pub const {zig_type} = extern struct {{")
     else:
-        l(f"pub const {as_zig_type(decl['name'])} = struct {{")
+        l(f"pub const {zig_type} = struct {{")
+    l(f"    pub fn init(options: anytype) {zig_type} {{ var item: {zig_type} = .{{ }}; init_with(&item, options); return item; }}")
     for field in decl['fields']:
         field_name = field['name']
         field_type = field['type']
@@ -179,26 +181,25 @@ def gen_func(decl, prefix):
 
 def gen_helper_funcs(inp):
     if inp['module'] == 'sokol_gfx':
-        l('pub fn ColorAttachmentActions(actions: anytype) [max_color_attachments]ColorAttachmentAction {')
-        # FIXME: needs more compile-time error checking to make sure the incoming struct
-        # is ColorAttachmentAction compatible (1 or 2 fields named 'action' and 'val')
-        l('    var res: [max_color_attachments]ColorAttachmentAction = [_]ColorAttachmentAction { .{ } } ** max_color_attachments;')
-        l('    inline for (actions) |action, i| {')
-        l('        if (@hasField(@TypeOf(action), "action")) {')
-        l('            res[i].action = action.action;')
-        l('        }')
-        l('        if (@hasField(@TypeOf(action), "val")) {')
-        l('            res[i].val[0] = action.val[0];')
-        l('            res[i].val[1] = action.val[1];')
-        l('            res[i].val[2] = action.val[2];')
-        l('            res[i].val[3] = action.val[3];')
+        l('fn init_with(target_ptr: anytype, opts: anytype) void {')
+        l('    switch (@typeInfo(@TypeOf(target_ptr.*))) {')
+        l('        .Array => {')
+        l('            inline for (opts) |item, i| {')
+        l('                init_with(&target_ptr.*[i], opts[i]);')
+        l('            }')
+        l('        },')
+        l('        .Struct => {')
+        l('            inline for (@typeInfo(@TypeOf(opts)).Struct.fields) |field| {')
+        l('                init_with(&@field(target_ptr.*, field.name), @field(opts, field.name));')
+        l('            }')
+        l('        },')
+        l('        else => {')
+        l('            target_ptr.* = opts;')
         l('        }')
         l('    }')
-        l('    return res;')
         l('}')
 
-def gen_module(inp):
-    l('// machine generated, do not edit')
+def pre_parse(inp):
     global struct_types
     global enum_types
     for decl in inp['decls']:
@@ -213,6 +214,14 @@ def gen_module(inp):
             enum_items[enum_name] = []
             for item in decl['items']:
                 enum_items[enum_name].append(as_enum_item_name(item['name']))
+
+def gen_module(inp):
+    l('// machine generated, do not edit')
+    l('')
+    l('//--- helper functions ---')
+    gen_helper_funcs(inp)
+    pre_parse(inp)
+    l('//--- API declarations ---')
     prefix = inp['prefix']
     for decl in inp['decls']:
         kind = decl['kind']
@@ -224,7 +233,6 @@ def gen_module(inp):
             gen_enum(decl, prefix)
         elif kind == 'func':
             gen_func(decl, prefix)
-    gen_helper_funcs(inp)
 
 def gen_zig(input_path, output_path):
     try:
