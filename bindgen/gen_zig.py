@@ -14,8 +14,8 @@ c_struct_types = []     # structs that have a C compatible memory layout
 enum_types = []
 enum_items = {}
 
-re_1d_array = re.compile("^\w*\s\[\d*\]$")
-re_2d_array = re.compile("^\w*\s\[\d*\]\[\d*\]$")
+re_1d_array = re.compile("^(?:const )?\w*\s\*?\[\d*\]$")
+re_2d_array = re.compile("^(?:const )?\w*\s\*?\[\d*\]\[\d*\]$")
 
 prim_types = {
     'int':      'i32',
@@ -96,6 +96,15 @@ def is_enum_type(s):
 def is_string_ptr(s):
     return s == "const char *"
 
+def is_void_ptr(s):
+    return s == "const void *"
+
+def is_prim_ptr(s):
+    for prim_type in prim_types:
+        if s == f"const {prim_type} *":
+            return True
+    return False
+
 def is_1d_array_type(s):
     return re_1d_array.match(s)
 
@@ -110,6 +119,13 @@ def extract_array_type(s):
 
 def extract_array_nums(s):
     return s[s.index('['):].replace('[', ' ').replace(']', ' ').split()
+
+def extract_prim_ptr_type(s):
+    tokens = s.split()
+    if tokens[0] == 'const':
+        return tokens[1]
+    else:
+        return tokens[0]
 
 # test if a struct has a C compatible memory layout
 def struct_is_c_compatible(decl):
@@ -140,7 +156,11 @@ def gen_struct(decl, prefix):
         elif is_enum_type(field_type):
             l(f"    {field_name}: {as_zig_type(field_type)} = .{enum_default_item(field_type)},")
         elif is_string_ptr(field_type):
-            l(f"    {field_name}: ?[*:0]const u8 = null,")
+            l(f"    {field_name}: [*c]const u8 = null,")
+        elif is_void_ptr(field_type):
+            l(f"    {field_name}: ?*const c_void = null,")
+        elif is_prim_ptr(field_type):
+            l(f"    {field_name}: ?[*]const {as_zig_prim_type(extract_prim_ptr_type(field_type))} = null,")
         elif is_1d_array_type(field_type):
             array_type = extract_array_type(field_type)
             array_nums = extract_array_nums(field_type)
@@ -155,8 +175,10 @@ def gen_struct(decl, prefix):
                 t0 = f"[{array_nums[0]}]{zig_type}"
                 t1 = f"[_]{zig_type}"
                 l(f"    {field_name}: {t0} = {t1}{{ .{{ }} }} ** {array_nums[0]},")
+            elif is_void_ptr(array_type):
+                l(f"    {field_name}: [{array_nums[0]}]?*const c_void = [_]?*const c_void {{ null }} ** {array_nums[0]},")
             else:
-                l(f"//    FIXME: ??? array {field_name}: {field_type} => {array_type} [{array_num}]")
+                l(f"//    FIXME: ??? array {field_name}: {field_type} => {array_type} [{array_nums[0]}]")
         elif is_2d_array_type(field_type):
             array_type = extract_array_type(field_type)
             array_nums = extract_array_nums(field_type)
