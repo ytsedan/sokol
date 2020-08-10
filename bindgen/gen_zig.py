@@ -139,6 +139,26 @@ def extract_ptr_type(s):
     else:
         return tokens[0]
 
+def as_extern_c_type(arg_type):
+    if arg_type == "void":
+        return "void"
+    elif is_prim_type(arg_type):
+        return as_zig_prim_type(arg_type)
+    elif is_struct_type(arg_type):
+        return as_zig_type(arg_type)
+    elif is_enum_type(arg_type):
+        return as_zig_type(arg_type)
+    elif is_void_ptr(arg_type):
+        return "?*c_void"
+    elif is_const_void_ptr(arg_type):
+        return "?*const c_void"
+    elif is_string_ptr(arg_type):
+        return "[*c]const u8"
+    elif is_struct_ptr(arg_type):
+        return f"[*c]const {as_zig_type(extract_ptr_type(arg_type))}"
+    else:
+        return '???'
+
 # get C-style arguments of a function pointer as string
 def funcptr_args_c(field_type):
     tokens = field_type[field_type.index('(*)')+4:-1].split(',')
@@ -147,24 +167,11 @@ def funcptr_args_c(field_type):
         arg_type = token.strip();
         if s != "":
             s += ", "
-        if arg_type == "void":
+        c_arg = as_extern_c_type(arg_type)
+        if (c_arg == "void"):
             return ""
-        elif is_prim_type(arg_type):
-            s += as_zig_prim_type(arg_type)
-        elif is_struct_type(arg_type):
-            s += as_zig_type(arg_type)
-        elif is_enum_type(arg_type):
-            s += as_zig_type(arg_type)
-        elif is_void_ptr(arg_type):
-            s += "?*c_void"
-        elif is_const_void_ptr(arg_type):
-            s += "?*const c_void"
-        elif is_string_ptr(arg_type):
-            s += "[*c]const u8"
-        elif is_struct_ptr(arg_type):
-            s += f"[*c]const {extract_ptr_type(arg_type)}"
         else:
-            s += '???'
+            s += c_arg
     return s
 
 # get C-style result of a function pointer as string
@@ -176,6 +183,20 @@ def funcptr_res_c(field_type):
         return '?*const c_void'
     else:
         return '???'
+
+def funcdecl_args_c(decl):
+    s = ""
+    for param_decl in decl['params']:
+        if s != "":
+            s += ", "
+        arg_type = param_decl['type']
+        s += as_extern_c_type(arg_type)
+    return s
+
+def funcdecl_res_c(decl):
+    decl_type = decl['type']
+    res_type = decl_type[:decl_type.index('(')].strip()
+    return as_extern_c_type(res_type)
 
 # test if a struct has a C compatible memory layout
 def struct_is_c_compatible(decl):
@@ -209,6 +230,8 @@ def gen_struct(decl, prefix):
             l(f"    {field_name}: [*c]const u8 = null,")
         elif is_const_void_ptr(field_type):
             l(f"    {field_name}: ?*const c_void = null,")
+        elif is_void_ptr(field_type):
+            l(f"    {field_name}: ?*c_void = null,")
         elif is_prim_ptr(field_type):
             l(f"    {field_name}: ?[*]const {as_zig_prim_type(extract_ptr_type(field_type))} = null,")
         elif is_func_ptr(field_type):
@@ -259,8 +282,11 @@ def gen_enum(decl, prefix):
                 l(f"    {item_name},")
     l("};")
 
-def gen_func(decl, prefix):
-    pass
+def gen_func_c(decl, prefix):
+    l(f"pub extern fn {decl['name']}({funcdecl_args_c(decl)}) {funcdecl_res_c(decl)};")
+
+def gen_func_zig(decl, prefix):
+    l("// FIXME: zig function wrapper")
 
 def gen_helper_funcs(inp):
     if inp['module'] == 'sokol_gfx':
@@ -315,7 +341,8 @@ def gen_module(inp):
         elif kind == 'enum':
             gen_enum(decl, prefix)
         elif kind == 'func':
-            gen_func(decl, prefix)
+            gen_func_c(decl, prefix)
+            gen_func_zig(decl, prefix)
 
 def gen_zig(input_path, output_path):
     try:
