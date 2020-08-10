@@ -96,14 +96,26 @@ def is_enum_type(s):
 def is_string_ptr(s):
     return s == "const char *"
 
-def is_void_ptr(s):
+def is_const_void_ptr(s):
     return s == "const void *"
+
+def is_void_ptr(s):
+    return s == "void *"
 
 def is_prim_ptr(s):
     for prim_type in prim_types:
         if s == f"const {prim_type} *":
             return True
     return False
+
+def is_struct_ptr(s):
+    for struct_type in struct_types:
+        if s == f"const {struct_type} *":
+            return True
+    return False
+
+def is_func_ptr(s):
+    return '(*)' in s
 
 def is_1d_array_type(s):
     return re_1d_array.match(s)
@@ -120,12 +132,50 @@ def extract_array_type(s):
 def extract_array_nums(s):
     return s[s.index('['):].replace('[', ' ').replace(']', ' ').split()
 
-def extract_prim_ptr_type(s):
+def extract_ptr_type(s):
     tokens = s.split()
     if tokens[0] == 'const':
         return tokens[1]
     else:
         return tokens[0]
+
+# get C-style arguments of a function pointer as string
+def funcptr_args_c(field_type):
+    tokens = field_type[field_type.index('(*)')+4:-1].split(',')
+    s = ""
+    for token in tokens:
+        arg_type = token.strip();
+        if s != "":
+            s += ", "
+        if arg_type == "void":
+            return ""
+        elif is_prim_type(arg_type):
+            s += as_zig_prim_type(arg_type)
+        elif is_struct_type(arg_type):
+            s += as_zig_type(arg_type)
+        elif is_enum_type(arg_type):
+            s += as_zig_type(arg_type)
+        elif is_void_ptr(arg_type):
+            s += "?*c_void"
+        elif is_const_void_ptr(arg_type):
+            s += "?*const c_void"
+        elif is_string_ptr(arg_type):
+            s += "[*c]const u8"
+        elif is_struct_ptr(arg_type):
+            s += f"[*c]const {extract_ptr_type(arg_type)}"
+        else:
+            s += '???'
+    return s
+
+# get C-style result of a function pointer as string
+def funcptr_res_c(field_type):
+    res_type = field_type[:field_type.index('(*)')].strip()
+    if res_type == 'void':
+        return 'void'
+    elif is_const_void_ptr(res_type):
+        return '?*const c_void'
+    else:
+        return '???'
 
 # test if a struct has a C compatible memory layout
 def struct_is_c_compatible(decl):
@@ -157,10 +207,12 @@ def gen_struct(decl, prefix):
             l(f"    {field_name}: {as_zig_type(field_type)} = .{enum_default_item(field_type)},")
         elif is_string_ptr(field_type):
             l(f"    {field_name}: [*c]const u8 = null,")
-        elif is_void_ptr(field_type):
+        elif is_const_void_ptr(field_type):
             l(f"    {field_name}: ?*const c_void = null,")
         elif is_prim_ptr(field_type):
-            l(f"    {field_name}: ?[*]const {as_zig_prim_type(extract_prim_ptr_type(field_type))} = null,")
+            l(f"    {field_name}: ?[*]const {as_zig_prim_type(extract_ptr_type(field_type))} = null,")
+        elif is_func_ptr(field_type):
+            l(f"    {field_name}: ?fn({funcptr_args_c(field_type)}) callconv(.C) {funcptr_res_c(field_type)},")
         elif is_1d_array_type(field_type):
             array_type = extract_array_type(field_type)
             array_nums = extract_array_nums(field_type)
@@ -175,7 +227,7 @@ def gen_struct(decl, prefix):
                 t0 = f"[{array_nums[0]}]{zig_type}"
                 t1 = f"[_]{zig_type}"
                 l(f"    {field_name}: {t0} = {t1}{{ .{{ }} }} ** {array_nums[0]},")
-            elif is_void_ptr(array_type):
+            elif is_const_void_ptr(array_type):
                 l(f"    {field_name}: [{array_nums[0]}]?*const c_void = [_]?*const c_void {{ null }} ** {array_nums[0]},")
             else:
                 l(f"//    FIXME: ??? array {field_name}: {field_type} => {array_type} [{array_nums[0]}]")
