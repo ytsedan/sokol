@@ -41,7 +41,7 @@ prim_types = {
     'int64_t':  'i64',
     'uint64_t': 'u64',
     'float':    'f32',
-    'double':   'f64'
+    'double':   'f64',
 }
 
 prim_defaults = {
@@ -56,22 +56,34 @@ prim_defaults = {
     'int64_t':  '0',
     'uint64_t': '0',
     'float':    '0.0',
-    'double':   '0.0'
+    'double':   '0.0',
+}
+
+struct_type_overrides = {
+    'sg_context_desc.color_format': 'int',
+    'sg_context_desc.depth_format': 'int',
 }
 
 def l(s):
     global out_lines
     out_lines += s + '\n'
 
+def as_zig_prim_type(s):
+    return prim_types[s]
+
+def check_struct_type_override(struct_name, field_name, orig_type):
+    s = f"{struct_name}.{field_name}"
+    if s in struct_type_overrides:
+        return struct_type_overrides[s]
+    else:
+        return orig_type
+
 # PREFIX_BLA_BLUB to bla_blub
-def as_const_name(s, prefix):
+def as_snake_case(s, prefix):
     outp = s.lower()
     if outp.startswith(prefix):
         outp = outp[len(prefix):]
     return outp
-
-def as_zig_prim_type(s):
-    return prim_types[s]
 
 # prefix_bla_blub => BlaBlub
 def as_title_case(s):
@@ -279,7 +291,8 @@ def struct_is_c_compatible(decl):
     return c_comp
 
 def gen_struct(decl, prefix):
-    zig_type = as_title_case(decl['name'])
+    struct_name = decl['name']
+    zig_type = as_title_case(struct_name)
     if decl['name'] in c_struct_types:
         l(f"pub const {zig_type} = extern struct {{")
     else:
@@ -288,6 +301,7 @@ def gen_struct(decl, prefix):
     for field in decl['fields']:
         field_name = field['name']
         field_type = field['type']
+        field_type = check_struct_type_override(struct_name, field_name, field_type)
         if is_prim_type(field_type):
             l(f"    {field_name}: {as_zig_prim_type(field_type)} = {type_default_value(field_type)},")
         elif is_struct_type(field_type):
@@ -337,7 +351,7 @@ def gen_struct(decl, prefix):
 
 def gen_consts(decl, prefix):
     for item in decl['items']:
-        l(f"pub const {as_const_name(item['name'], prefix)} = {item['value']};")
+        l(f"pub const {as_snake_case(item['name'], prefix)} = {item['value']};")
 
 def gen_enum(decl, prefix):
     l(f"pub const {as_title_case(decl['name'])} = extern enum(i32) {{")
