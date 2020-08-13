@@ -9,9 +9,22 @@
 import json, re, os
 
 struct_types = []
-c_struct_types = []     # structs that have a C compatible memory layout
+c_struct_types = []
 enum_types = []
 enum_items = {}
+out_lines = ''
+
+def reset_globals():
+    global struct_types
+    global c_struct_types
+    global enum_types
+    global enum_items
+    global out_lines
+    struct_types = []
+    c_struct_types = []
+    enum_types = []
+    enum_items = {}
+    out_lines = ''
 
 re_1d_array = re.compile("^(?:const )?\w*\s\*?\[\d*\]$")
 re_2d_array = re.compile("^(?:const )?\w*\s\*?\[\d*\]\[\d*\]$")
@@ -46,7 +59,6 @@ prim_defaults = {
     'double':   '0.0'
 }
 
-out_lines = ''
 def l(s):
     global out_lines
     out_lines += s + '\n'
@@ -264,7 +276,6 @@ def struct_is_c_compatible(decl):
             if field_type not in c_struct_types:
                 c_comp = False
         # FIXME
-    print(f"{decl['name']} C compatible: {c_comp}")
     return c_comp
 
 def gen_struct(decl, prefix):
@@ -340,7 +351,7 @@ def gen_enum(decl, prefix):
     l("};")
 
 def gen_func_c(decl, prefix):
-    l(f"extern fn {decl['name']}({funcdecl_args_c(decl)}) {funcdecl_res_c(decl)};")
+    l(f"pub extern fn {decl['name']}({funcdecl_args_c(decl)}) {funcdecl_res_c(decl)};")
 
 def gen_func_zig(decl, prefix):
     c_func_name = decl['name']
@@ -365,24 +376,23 @@ def gen_func_zig(decl, prefix):
     l("}")
 
 def gen_helper_funcs(inp):
-    if inp['module'] == 'sokol_gfx':
-        l('fn init_with(target_ptr: anytype, opts: anytype) void {')
-        l('    switch (@typeInfo(@TypeOf(target_ptr.*))) {')
-        l('        .Array => {')
-        l('            inline for (opts) |item, i| {')
-        l('                init_with(&target_ptr.*[i], opts[i]);')
-        l('            }')
-        l('        },')
-        l('        .Struct => {')
-        l('            inline for (@typeInfo(@TypeOf(opts)).Struct.fields) |field| {')
-        l('                init_with(&@field(target_ptr.*, field.name), @field(opts, field.name));')
-        l('            }')
-        l('        },')
-        l('        else => {')
-        l('            target_ptr.* = opts;')
-        l('        }')
-        l('    }')
-        l('}')
+    l('fn init_with(target_ptr: anytype, opts: anytype) void {')
+    l('    switch (@typeInfo(@TypeOf(target_ptr.*))) {')
+    l('        .Array => {')
+    l('            inline for (opts) |item, i| {')
+    l('                init_with(&target_ptr.*[i], opts[i]);')
+    l('            }')
+    l('        },')
+    l('        .Struct => {')
+    l('            inline for (@typeInfo(@TypeOf(opts)).Struct.fields) |field| {')
+    l('                init_with(&@field(target_ptr.*, field.name), @field(opts, field.name));')
+    l('            }')
+    l('        },')
+    l('        else => {')
+    l('            target_ptr.* = opts;')
+    l('        }')
+    l('    }')
+    l('}')
 
 def pre_parse(inp):
     global struct_types
@@ -421,6 +431,7 @@ def gen_module(inp):
             gen_func_zig(decl, prefix)
 
 def gen_zig(input_path, output_path):
+    reset_globals()
     try:
         print(f">>> {input_path} => {output_path}")
         with open(input_path, 'r') as f_inp:
@@ -435,6 +446,7 @@ def main():
     if not os.path.isdir('zig/'):
         os.mkdir('zig')
     gen_zig('sokol_gfx.json', 'zig/sokol_gfx.zig')
+    gen_zig('sokol_app.json', 'zig/sokol_app.zig')
 
 if __name__ == '__main__':
     main()
