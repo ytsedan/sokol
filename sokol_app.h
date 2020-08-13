@@ -1016,7 +1016,7 @@ SOKOL_API_DECL void sapp_set_clipboard_string(const char* str);
 SOKOL_API_DECL const char* sapp_get_clipboard_string(void);
 
 /* special run-function for SOKOL_NO_ENTRY (in standard mode this is an empty stub) */
-SOKOL_API_DECL int sapp_run(const sapp_desc* desc);
+SOKOL_API_DECL void sapp_run(const sapp_desc* desc);
 
 /* GL: return true when GLES2 fallback is active (to detect fallback from GLES3) */
 SOKOL_API_DECL bool sapp_gles2(void);
@@ -1062,7 +1062,7 @@ SOKOL_API_DECL const void* sapp_android_get_native_activity(void);
 } /* extern "C" */
 
 /* reference-based equivalents for C++ */
-inline int sapp_run(const sapp_desc& desc) { return sapp_run(&desc); }
+inline void sapp_run(const sapp_desc& desc) { return sapp_run(&desc); }
 
 #endif
 #endif // SOKOL_APP_INCLUDED
@@ -8077,7 +8077,7 @@ int main(int argc, char* argv[]) {
 
 /*== PUBLIC API FUNCTIONS ====================================================*/
 #if defined(SOKOL_NO_ENTRY)
-SOKOL_API_IMPL int sapp_run(const sapp_desc* desc) {
+SOKOL_API_IMPL void sapp_run(const sapp_desc* desc) {
     SOKOL_ASSERT(desc);
     #if defined(_SAPP_MACOS)
         _sapp_macos_run(desc);
@@ -8093,7 +8093,6 @@ SOKOL_API_IMPL int sapp_run(const sapp_desc* desc) {
         // calling sapp_run() directly is not supported on Android)
         _sapp_fail("sapp_run() not supported on this platform!");
     #endif
-    return 0;
 }
 
 /* this is just a stub so the linker doesn't complain */
@@ -8106,9 +8105,8 @@ sapp_desc sokol_main(int argc, char* argv[]) {
 }
 #else
 /* likewise, in normal mode, sapp_run() is just an empty stub */
-SOKOL_API_IMPL int sapp_run(const sapp_desc* desc) {
+SOKOL_API_IMPL void sapp_run(const sapp_desc* desc) {
     _SOKOL_UNUSED(desc);
-    return 0;
 }
 #endif
 
