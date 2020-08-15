@@ -9,19 +9,16 @@
 import json, re, os
 
 struct_types = []
-c_struct_types = []
 enum_types = []
 enum_items = {}
 out_lines = ''
 
 def reset_globals():
     global struct_types
-    global c_struct_types
     global enum_types
     global enum_items
     global out_lines
     struct_types = []
-    c_struct_types = []
     enum_types = []
     enum_items = {}
     out_lines = ''
@@ -59,7 +56,7 @@ prim_defaults = {
     'double':   '0.0',
 }
 
-struct_type_overrides = {
+struct_field_type_overrides = {
     'sg_context_desc.color_format': 'int',
     'sg_context_desc.depth_format': 'int',
 }
@@ -71,10 +68,10 @@ def l(s):
 def as_zig_prim_type(s):
     return prim_types[s]
 
-def check_struct_type_override(struct_name, field_name, orig_type):
+def check_struct_field_type_override(struct_name, field_name, orig_type):
     s = f"{struct_name}.{field_name}"
-    if s in struct_type_overrides:
-        return struct_type_overrides[s]
+    if s in struct_field_type_overrides:
+        return struct_field_type_overrides[s]
     else:
         return orig_type
 
@@ -139,7 +136,7 @@ def is_prim_ptr(s):
             return True
     return False
 
-def is_struct_ptr(s):
+def is_const_struct_ptr(s):
     for struct_type in struct_types:
         if s == f"const {struct_type} *":
             return True
@@ -185,7 +182,7 @@ def as_extern_c_arg_type(arg_type):
         return "?*const c_void"
     elif is_string_ptr(arg_type):
         return "[*c]const u8"
-    elif is_struct_ptr(arg_type):
+    elif is_const_struct_ptr(arg_type):
         return f"[*c]const {as_title_case(extract_ptr_type(arg_type))}"
     else:
         return '???'
@@ -216,8 +213,8 @@ def as_zig_arg_type(arg_prefix, arg_type):
             return "comptime T: type, " + pre +"[]const T"
     elif is_string_ptr(arg_type):
         return pre + "[]const u8"
-    elif is_struct_ptr(arg_type):
-        # not a bug, pass tructs by value
+    elif is_const_struct_ptr(arg_type):
+        # not a bug, pass const structs by value
         return pre + f"{as_title_case(extract_ptr_type(arg_type))}"
     else:
         return arg_prefix + "???"
@@ -279,29 +276,15 @@ def funcdecl_res_zig(decl):
         zig_res_type = "void"
     return zig_res_type
 
-# test if a struct has a C compatible memory layout
-def struct_is_c_compatible(decl):
-    c_comp = True;
-    for field in decl['fields']:
-        field_type = field['type']
-        if is_struct_type(field_type):
-            if field_type not in c_struct_types:
-                c_comp = False
-        # FIXME
-    return c_comp
-
-def gen_struct(decl, prefix):
+def gen_struct(decl, prefix, callconvc_funcptrs = True, use_raw_name=False, use_extern=True):
     struct_name = decl['name']
-    zig_type = as_title_case(struct_name)
-    if decl['name'] in c_struct_types:
-        l(f"pub const {zig_type} = extern struct {{")
-    else:
-        l(f"pub const {zig_type} = struct {{")
+    zig_type = struct_name if use_raw_name else as_title_case(struct_name)
+    l(f"pub const {zig_type} = {'extern ' if use_extern else ''}struct {{")
     l(f"    pub fn init(options: anytype) {zig_type} {{ var item: {zig_type} = .{{ }}; init_with(&item, options); return item; }}")
     for field in decl['fields']:
         field_name = field['name']
         field_type = field['type']
-        field_type = check_struct_type_override(struct_name, field_name, field_type)
+        field_type = check_struct_field_type_override(struct_name, field_name, field_type)
         if is_prim_type(field_type):
             l(f"    {field_name}: {as_zig_prim_type(field_type)} = {type_default_value(field_type)},")
         elif is_struct_type(field_type):
@@ -317,7 +300,10 @@ def gen_struct(decl, prefix):
         elif is_prim_ptr(field_type):
             l(f"    {field_name}: ?[*]const {as_zig_prim_type(extract_ptr_type(field_type))} = null,")
         elif is_func_ptr(field_type):
-            l(f"    {field_name}: ?fn({funcptr_args_c(field_type)}) callconv(.C) {funcptr_res_c(field_type)} = null,")
+            if callconvc_funcptrs:
+                l(f"    {field_name}: ?fn({funcptr_args_c(field_type)}) callconv(.C) {funcptr_res_c(field_type)} = null,")
+            else:
+                l(f"    {field_name}: ?fn({funcptr_args_c(field_type)}) {funcptr_res_c(field_type)} = null,")
         elif is_1d_array_type(field_type):
             array_type = extract_array_type(field_type)
             array_nums = extract_array_nums(field_type)
@@ -381,7 +367,7 @@ def gen_func_zig(decl, prefix):
             s += ", "
         arg_name = param_decl['name']
         arg_type = param_decl['type']
-        if is_struct_ptr(arg_type):
+        if is_const_struct_ptr(arg_type):
             s += "&" + arg_name
         else:
             s += arg_name
@@ -389,7 +375,7 @@ def gen_func_zig(decl, prefix):
     l(s)
     l("}")
 
-def gen_helper_funcs(inp):
+def gen_helper_code(inp):
     l('fn init_with(target_ptr: anytype, opts: anytype) void {')
     l('    switch (@typeInfo(@TypeOf(target_ptr.*))) {')
     l('        .Array => {')
@@ -407,6 +393,9 @@ def gen_helper_funcs(inp):
     l('        }')
     l('    }')
     l('}')
+    l('pub fn sizeOf(comptime v: anytype) comptime_int {')
+    l('    return @sizeOf(@TypeOf(v));')
+    l('}')
 
 def pre_parse(inp):
     global struct_types
@@ -415,8 +404,6 @@ def pre_parse(inp):
         kind = decl['kind']
         if kind == 'struct':
             struct_types.append(decl['name'])
-            if struct_is_c_compatible(decl):
-                c_struct_types.append(decl['name'])
         elif kind == 'enum':
             enum_name = decl['name']
             enum_types.append(enum_name)
@@ -428,7 +415,7 @@ def gen_module(inp):
     l('// machine generated, do not edit')
     l('')
     l('//--- helper functions ---')
-    gen_helper_funcs(inp)
+    gen_helper_code(inp)
     pre_parse(inp)
     l('//--- API declarations ---')
     prefix = inp['prefix']
@@ -459,8 +446,10 @@ def gen_zig(input_path, output_path):
 def main():
     if not os.path.isdir('zig/'):
         os.mkdir('zig')
-    gen_zig('sokol_gfx.json', 'zig/sokol_gfx.zig')
-    gen_zig('sokol_app.json', 'zig/sokol_app.zig')
+    if not os.path.isdir('zig/sokol'):
+        os.mkdir('zig/sokol')
+    gen_zig('sokol_gfx.json', 'zig/sokol/gfx.zig')
+    gen_zig('sokol_app.json', 'zig/sokol/app.zig')
 
 if __name__ == '__main__':
     main()
