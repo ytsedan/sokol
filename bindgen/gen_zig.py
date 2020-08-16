@@ -280,7 +280,7 @@ def gen_struct(decl, prefix, callconvc_funcptrs = True, use_raw_name=False, use_
     struct_name = decl['name']
     zig_type = struct_name if use_raw_name else as_title_case(struct_name)
     l(f"pub const {zig_type} = {'extern ' if use_extern else ''}struct {{")
-    l(f"    pub fn init(options: anytype) {zig_type} {{ var item: {zig_type} = .{{ }}; init_with(&item, options); return item; }}")
+    #l(f"    pub fn init(options: anytype) {zig_type} {{ var item: {zig_type} = .{{ }}; init_with(&item, options); return item; }}")
     for field in decl['fields']:
         field_name = field['name']
         field_type = field['type']
@@ -307,17 +307,17 @@ def gen_struct(decl, prefix, callconvc_funcptrs = True, use_raw_name=False, use_
         elif is_1d_array_type(field_type):
             array_type = extract_array_type(field_type)
             array_nums = extract_array_nums(field_type)
-            if is_prim_type(array_type):
-                zig_type = as_zig_prim_type(array_type)
+            if is_prim_type(array_type) or is_struct_type(array_type):
+                if is_prim_type(array_type):
+                    zig_type = as_zig_prim_type(array_type)
+                    def_val = type_default_value(array_type)
+                else:
+                    zig_type = as_title_case(array_type)
+                    def_val = ".{}"
                 t0 = f"[{array_nums[0]}]{zig_type}"
+                t0_slice = f"[]const {zig_type}"
                 t1 = f"[_]{zig_type}"
-                def_val = type_default_value(array_type)
                 l(f"    {field_name}: {t0} = {t1}{{{def_val}}} ** {array_nums[0]},")
-            elif is_struct_type(array_type):
-                zig_type = as_title_case(array_type)
-                t0 = f"[{array_nums[0]}]{zig_type}"
-                t1 = f"[_]{zig_type}"
-                l(f"    {field_name}: {t0} = {t1}{{ .{{ }} }} ** {array_nums[0]},")
             elif is_const_void_ptr(array_type):
                 l(f"    {field_name}: [{array_nums[0]}]?*const c_void = [_]?*const c_void {{ null }} ** {array_nums[0]},")
             else:
@@ -376,23 +376,6 @@ def gen_func_zig(decl, prefix):
     l("}")
 
 def gen_helper_code(inp):
-    l('fn init_with(target_ptr: anytype, opts: anytype) void {')
-    l('    switch (@typeInfo(@TypeOf(target_ptr.*))) {')
-    l('        .Array => {')
-    l('            inline for (opts) |item, i| {')
-    l('                init_with(&target_ptr.*[i], opts[i]);')
-    l('            }')
-    l('        },')
-    l('        .Struct => {')
-    l('            inline for (@typeInfo(@TypeOf(opts)).Struct.fields) |field| {')
-    l('                init_with(&@field(target_ptr.*, field.name), @field(opts, field.name));')
-    l('            }')
-    l('        },')
-    l('        else => {')
-    l('            target_ptr.* = opts;')
-    l('        }')
-    l('    }')
-    l('}')
     l('pub fn sizeOf(comptime v: anytype) comptime_int {')
     l('    return @sizeOf(@TypeOf(v));')
     l('}')
