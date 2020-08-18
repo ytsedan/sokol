@@ -202,15 +202,9 @@ def as_zig_arg_type(arg_prefix, arg_type):
     elif is_enum_type(arg_type):
         return pre + as_title_case(arg_type)
     elif is_void_ptr(arg_type):
-        if arg_prefix is None:
-            return "?*c_void"
-        else:
-            return "comptime T: type, " + pre + "[]T"
+        return pre + "?*c_void"
     elif is_const_void_ptr(arg_type):
-        if arg_prefix is None:
-            return "?*const c_void"
-        else:
-            return "comptime T: type, " + pre +"[]const T"
+        return pre + "?*const c_void"
     elif is_string_ptr(arg_type):
         return pre + "[]const u8"
     elif is_const_struct_ptr(arg_type):
@@ -375,11 +369,6 @@ def gen_func_zig(decl, prefix):
     l(s)
     l("}")
 
-def gen_helper_code(inp):
-    l('pub fn sizeOf(comptime v: anytype) comptime_int {')
-    l('    return @sizeOf(@TypeOf(v));')
-    l('}')
-
 def pre_parse(inp):
     global struct_types
     global enum_types
@@ -397,8 +386,6 @@ def pre_parse(inp):
 def gen_module(inp):
     l('// machine generated, do not edit')
     l('')
-    l('//--- helper functions ---')
-    gen_helper_code(inp)
     pre_parse(inp)
     l('//--- API declarations ---')
     prefix = inp['prefix']
