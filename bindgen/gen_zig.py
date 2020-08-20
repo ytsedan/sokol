@@ -27,33 +27,37 @@ re_1d_array = re.compile("^(?:const )?\w*\s\*?\[\d*\]$")
 re_2d_array = re.compile("^(?:const )?\w*\s\*?\[\d*\]\[\d*\]$")
 
 prim_types = {
-    'int':      'i32',
-    'bool':     'bool',
-    'int8_t':   'i8',
-    'uint8_t':  'u8',
-    'int16_t':  'i16',
-    'uint16_t': 'u16',
-    'int32_t':  'i32',
-    'uint32_t': 'u32',
-    'int64_t':  'i64',
-    'uint64_t': 'u64',
-    'float':    'f32',
-    'double':   'f64',
+    'int':          'i32',
+    'bool':         'bool',
+    'int8_t':       'i8',
+    'uint8_t':      'u8',
+    'int16_t':      'i16',
+    'uint16_t':     'u16',
+    'int32_t':      'i32',
+    'uint32_t':     'u32',
+    'int64_t':      'i64',
+    'uint64_t':     'u64',
+    'float':        'f32',
+    'double':       'f64',
+    'uintptr_t':    'usize',
+    'intptr_t':     'isize'
 }
 
 prim_defaults = {
-    'int':      '0',
-    'bool':     'false',
-    'int8_t':   '0',
-    'uint8_t':  '0',
-    'int16_t':  '0',
-    'uint16_t': '0',
-    'int32_t':  '0',
-    'uint32_t': '0',
-    'int64_t':  '0',
-    'uint64_t': '0',
-    'float':    '0.0',
-    'double':   '0.0',
+    'int':          '0',
+    'bool':         'false',
+    'int8_t':       '0',
+    'uint8_t':      '0',
+    'int16_t':      '0',
+    'uint16_t':     '0',
+    'int32_t':      '0',
+    'uint32_t':     '0',
+    'int64_t':      '0',
+    'uint64_t':     '0',
+    'float':        '0.0',
+    'double':       '0.0',
+    'uintptr_t':    '0',
+    'intptr_t':     '0'
 }
 
 struct_field_type_overrides = {
@@ -326,7 +330,7 @@ def gen_struct(decl, prefix, callconvc_funcptrs = True, use_raw_name=False, use_
                 t0 = f"[{array_nums[0]}][{array_nums[1]}]{zig_type}"
                 l(f"    {field_name}: {t0} = [_][{array_nums[1]}]{zig_type}{{[_]{zig_type}{{ .{{ }} }}**{array_nums[1]}}}**{array_nums[0]},")
         else:
-            l(f"//  {field_name}: {field_type};")
+            l(f"// FIXME: {field_name}: {field_type};")
     l("};")
 
 def gen_consts(decl, prefix):
@@ -387,7 +391,6 @@ def gen_module(inp):
     l('// machine generated, do not edit')
     l('')
     pre_parse(inp)
-    l('//--- API declarations ---')
     prefix = inp['prefix']
     for decl in inp['decls']:
         kind = decl['kind']
