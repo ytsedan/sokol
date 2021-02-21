@@ -1936,26 +1936,45 @@ SOKOL_API_IMPL void snk_render(int width, int height) {
         sg_update_buffer(_snuklear.ibuf, &(sg_range){ nk_buffer_memory_const(&idx), nk_buffer_total(&idx) });
 
         /* Iterate through the command list, rendering each one */
-        const struct nk_draw_command* cmd = NULL;
-        int idx_offset = 0;
-        nk_draw_foreach(cmd, &_snuklear.ctx, &cmds) {
-            if (cmd->elem_count > 0) {
-                sg_apply_bindings(&(sg_bindings){
-                    .fs_images[0] = _snuklear.img,
-                    .vertex_buffers[0] = _snuklear.vbuf,
-                    .index_buffer = _snuklear.ibuf,
-                    .vertex_buffer_offsets[0] = 0,
-                    .index_buffer_offset = idx_offset
-                });
-                sg_apply_scissor_rectf(cmd->clip_rect.x * dpi_scale,
-                                       cmd->clip_rect.y * dpi_scale,
-                                       cmd->clip_rect.w * dpi_scale,
-                                       cmd->clip_rect.h * dpi_scale,
-                                       true);
-                sg_draw(0, (int)cmd->elem_count, 1);
-                idx_offset += (int)cmd->elem_count * (int)sizeof(uint16_t);
+        const struct nk_draw_command* cmd = nk__draw_begin(&_snuklear.ctx, &cmds);
+    
+        int idx_offset = 0, elm_cnt = 0;
+        struct nk_rect clip = {};
+        
+        while(1) {
+            if (cmd == 0 || memcmp(&clip, &cmd->clip_rect, sizeof(struct nk_rect)) != 0) {
+                
+                if (elm_cnt > 0) {
+                    sg_apply_bindings(&(sg_bindings){
+                        .fs_images[0] = _snuklear.img,
+                        .vertex_buffers[0] = _snuklear.vbuf,
+                        .index_buffer = _snuklear.ibuf,
+                        .vertex_buffer_offsets[0] = 0,
+                        .index_buffer_offset = idx_offset
+                    });
+                    sg_apply_scissor_rectf(clip.x * dpi_scale,
+                                           clip.y * dpi_scale,
+                                           clip.w * dpi_scale,
+                                           clip.h * dpi_scale,
+                                           true);
+                    sg_draw(0, elm_cnt, 1);
+                }
+                
+                idx_offset += elm_cnt * (int)sizeof(uint16_t);
+                elm_cnt = 0;
+                
+                if (!cmd) break;
             }
+            
+            elm_cnt += (int)cmd->elem_count;
+            clip = cmd->clip_rect;
+            
+            //other images than text atlas (_snuklear.img) currently not supported
+            SOKOL_ASSERT(cmd->texture.id == 0 || cmd->texture.id == _snuklear.img.id);
+
+            cmd = nk__draw_next(cmd, &cmds, &_snuklear.ctx);
         }
+        
         sg_apply_scissor_rect(0, 0, fb_width, fb_height, true);
     }
 
