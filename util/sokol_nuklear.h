@@ -1896,7 +1896,7 @@ SOKOL_API_IMPL void snk_render(int width, int height) {
     struct nk_convert_config cfg = {
         .shape_AA = NK_ANTI_ALIASING_ON,
         .line_AA = NK_ANTI_ALIASING_ON,
-        .scale_AA = _snuklear.desc.dpi_scale,
+        .feather_AA = 1.0f / _snuklear.desc.dpi_scale,
         .vertex_layout = vertex_layout,
         .vertex_size = sizeof(_snk_vertex_t),
         .vertex_alignment = NK_ALIGNOF(_snk_vertex_t),
