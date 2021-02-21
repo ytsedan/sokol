@@ -2139,9 +2139,11 @@ SOKOL_API_IMPL void snk_handle_event(const sapp_event* ev) {
         case SAPP_EVENTTYPE_CHAR:
             if ((ev->char_code >= 32) &&
                 (ev->char_code != 127) &&
-                (0 == (ev->modifiers & (SAPP_MODIFIER_ALT|SAPP_MODIFIER_CTRL|SAPP_MODIFIER_SUPER))))
+                (0 == (ev->modifiers & (SAPP_MODIFIER_CTRL|SAPP_MODIFIER_SUPER))))
             {
-                _snk_append_char(ev->char_code);
+                if (_snk_is_osx() || (0 == (ev->modifiers & SAPP_MODIFIER_ALT))) {
+                    _snk_append_char(ev->char_code);
+                }
             }
             break;
         case SAPP_EVENTTYPE_CLIPBOARD_PASTED:
