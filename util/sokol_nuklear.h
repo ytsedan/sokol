@@ -1701,7 +1701,7 @@ SOKOL_API_IMPL void snk_setup(const snk_desc_t* desc) {
         nk_font_atlas_init_default(&_snuklear.atlas);
         nk_font_atlas_begin(&_snuklear.atlas);
         int font_width = 0, font_height = 0;
-        const void* pixels = nk_font_atlas_bake(&_snuklear.atlas, &font_width, &font_height, NK_FONT_ATLAS_RGBA32);
+        const void* pixels = nk_font_atlas_bake(&_snuklear.atlas, &font_width, &font_height, NK_FONT_ATLAS_RGBA32, _snuklear.desc.dpi_scale);
         SOKOL_ASSERT((font_width > 0) && (font_height > 0));
         _snuklear.img = sg_make_image(&(sg_image_desc){
             .width = font_width,
@@ -1896,6 +1896,7 @@ SOKOL_API_IMPL void snk_render(int width, int height) {
     struct nk_convert_config cfg = {
         .shape_AA = NK_ANTI_ALIASING_ON,
         .line_AA = NK_ANTI_ALIASING_ON,
+        .scale_AA = _snuklear.desc.dpi_scale,
         .vertex_layout = vertex_layout,
         .vertex_size = sizeof(_snk_vertex_t),
         .vertex_alignment = NK_ALIGNOF(_snk_vertex_t),
